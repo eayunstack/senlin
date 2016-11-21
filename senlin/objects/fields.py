@@ -10,12 +10,19 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import copy
+
+from oslo_config import cfg
 from oslo_serialization import jsonutils
 from oslo_utils import strutils
 from oslo_versionedobjects import fields
+import re
 import six
 
+from senlin.common import consts
 from senlin.common.i18n import _
+
+CONF = cfg.CONF
 
 # Field alias for code readability
 FlexibleBooleanField = fields.FlexibleBooleanField
@@ -362,13 +369,39 @@ class AdjustmentType(BaseEnum):
     )
 
 
-class BooleanField(fields.AutoTypedField):
+class ClusterActionName(BaseEnum):
 
-    AUTO_TYPE = None
+    ALL = consts.CLUSTER_ACTION_NAMES
 
-    def __init__(self, default=False, **kwargs):
-        self.AUTO_TYPE = Boolean(default=default)
-        super(BooleanField, self).__init__(**kwargs)
+
+class ClusterStatus(BaseEnum):
+
+    ALL = consts.CLUSTER_STATUSES
+
+
+class NodeStatus(BaseEnum):
+
+    ALL = consts.NODE_STATUSES
+
+
+class ActionStatus(BaseEnum):
+
+    ALL = consts.ACTION_STATUSES
+
+
+class ReceiverType(BaseEnum):
+
+    ALL = consts.RECEIVER_TYPES
+
+
+class UniqueDict(fields.Dict):
+
+    def coerce(self, obj, attr, value):
+        res = super(UniqueDict, self).coerce(obj, attr, value)
+        new_nodes = res.values()
+        if len(new_nodes) != len(set(new_nodes)):
+            raise ValueError(_("Map contains duplicated values"))
+        return res
 
 
 # TODO(Qiming): remove this when oslo patch is released
@@ -442,6 +475,51 @@ class IdentityListField(fields.AutoTypedField):
                                                 default=default)
 
 
-class AdjustmentTypeField(fields.BaseEnumField):
+class AdjustmentTypeField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = AdjustmentType(nullable=nullable)
+        super(AdjustmentTypeField, self).__init__(**kwargs)
+
+
+class ClusterActionNameField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = ClusterActionName(nullable=nullable)
+        super(ClusterActionNameField, self).__init__(**kwargs)
+
+
+class ClusterStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = ClusterStatus
+
+
+class NodeStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = NodeStatus
+
+
+class ActionStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = ActionStatus
+
+
+class ReceiverTypeField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = ReceiverType(nullable=nullable)
+        super(ReceiverTypeField, self).__init__(**kwargs)
+
+
+class NodeReplaceMapField(fields.AutoTypedField):
 
     AUTO_TYPE = AdjustmentType()
