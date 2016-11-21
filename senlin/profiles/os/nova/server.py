@@ -552,7 +552,10 @@ class ServerProfile(base.Profile):
             server = self.compute(obj).server_create(**kwargs)
             self.compute(obj).wait_for_server(server.id)
         except exc.InternalError as ex:
-            raise exc.EResourceCreation(type='server', message=ex.message)
+            if server and server.id:
+                resource_id = server.id
+            raise exc.EResourceCreation(type='server', message=ex.message,
+                                        resource_id=resource_id)
 
         # server floating ip associate
         if float_ip:

@@ -261,7 +261,9 @@ class Node(object):
         try:
             physical_id = pb.Profile.create_object(context, self)
         except exc.EResourceCreation as ex:
-            self.set_status(context, self.ERROR, six.text_type(ex))
+            physical_id = ex.resource_id
+            self.set_status(context, self.ERROR, six.text_type(ex),
+                            physical_id=physical_id)
             return False
 
         self.set_status(context, self.ACTIVE, _('Creation succeeded'),
