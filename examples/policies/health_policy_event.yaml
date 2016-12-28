@@ -1,4 +1,4 @@
-# Sample health policy based on node health checking
+# Sample health policy based on VM lifecycle events
 type: senlin.policy.health
 version: 1.0
 description: A policy for maintaining node health from a cluster.
@@ -6,13 +6,10 @@ properties:
   detection:
     # Type for health checking, valid values include:
     # NODE_STATUS_POLLING, LB_STATUS_POLLING, VM_LIFECYCLE_EVENTS
-    type: NODE_STATUS_POLLING
-
-    options:
-      # Number of seconds between two adjacent checking
-      interval: 60
+    type: VM_LIFECYCLE_EVENTS
 
   recovery:
     # List of actions that can be retried on a failed node
     actions:
+      - name: REBUILD
       - name: RECREATE
