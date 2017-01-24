@@ -446,9 +446,9 @@ def service_get_all(context):
 
 
 def registry_create(context, cluster_id, check_type, interval, params,
-                    engine_id):
+                    engine_id, enabled=True):
     return IMPL.registry_create(context, cluster_id, check_type, interval,
-                                params, engine_id)
+                                params, engine_id, enabled=enabled)
 
 
 def registry_update(context, cluster_id, values):

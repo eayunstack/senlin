@@ -312,7 +312,7 @@ class HealthManager(service.Service):
         return True
 
     def register_cluster(self, ctx, cluster_id, check_type, interval=None,
-                         params=None):
+                         params=None, enabled=True):
         r"""Register cluster for health checking.
 
         :param ctx: The context of notify request.
@@ -327,14 +327,15 @@ class HealthManager(service.Service):
 
         registry = objects.HealthRegistry.create(ctx, cluster_id, check_type,
                                                  interval, params,
-                                                 self.engine_id)
+                                                 self.engine_id,
+                                                 enabled=enabled)
 
         entry = {
             'cluster_id': registry.cluster_id,
             'check_type': registry.check_type,
             'interval': registry.interval,
             'params': registry.params,
-            'enabled': True
+            'enabled': registry.enabled
         }
 
         self._start_check(entry)
@@ -407,11 +408,13 @@ def register(cluster_id, engine_id=None, **kwargs):
     params = kwargs.pop('params', {})
     interval = kwargs.pop('interval', cfg.CONF.periodic_interval)
     check_type = kwargs.pop('check_type', consts.NODE_STATUS_POLLING)
+    enabled = kwargs.pop('enabled', True)
     return notify(engine_id, 'register_cluster',
                   cluster_id=cluster_id,
                   interval=interval,
                   check_type=check_type,
-                  params=params)
+                  params=params,
+                  enabled=enabled)
 
 
 def unregister(cluster_id, engine_id=None):
