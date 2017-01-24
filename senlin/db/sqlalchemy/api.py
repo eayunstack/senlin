@@ -1182,6 +1182,29 @@ def service_get_all(context):
 
 
 # HealthRegistry
+def registry_create(context, cluster_id, check_type, interval, params,
+                    engine_id, enabled=True):
+    with session_for_write() as session:
+        registry = models.HealthRegistry()
+        registry.cluster_id = cluster_id
+        registry.check_type = check_type
+        registry.interval = interval
+        registry.params = params
+        registry.engine_id = engine_id
+        registry.enabled = enabled
+        session.add(registry)
+        return registry
+
+
+def registry_update(context, cluster_id, values):
+    with session_for_write() as session:
+        query = session.query(models.HealthRegistry)
+        registry = query.filter_by(cluster_id=cluster_id).first()
+        if registry:
+            registry.update(values)
+            registry.save(session)
+
+
 def registry_claim(context, engine_id):
     with session_for_write() as session:
         engines = session.query(models.Service).all()
@@ -1202,19 +1225,6 @@ def registry_delete(context, cluster_id):
         if registry is None:
             return
         session.delete(registry)
-
-
-def registry_create(context, cluster_id, check_type, interval, params,
-                    engine_id):
-    with session_for_write() as session:
-        registry = models.HealthRegistry()
-        registry.cluster_id = cluster_id
-        registry.check_type = check_type
-        registry.interval = interval
-        registry.params = params
-        registry.engine_id = engine_id
-        session.add(registry)
-        return registry
 
 
 # Utils
