@@ -917,6 +917,7 @@ class ServerProfile(base.Profile):
             image_id = server_data['image']
         details = {
             'image': image_id,
+            'volumes_attached': server_data['attached_volumes'],
             'flavor': server_data['flavor']['id'],
         }
         for key in known_keys:
