@@ -42,11 +42,11 @@ class Cluster(object):
     STATUSES = (
         INIT, ACTIVE, CREATING, UPDATING, RESIZING, DELETING,
         CHECKING, RECOVERING, CRITICAL, ERROR, WARNING,
-        STOPPED,
+        SUSPEND,
     ) = (
         'INIT', 'ACTIVE', 'CREATING', 'UPDATING', 'RESIZING', 'DELETING',
         'CHECKING', 'RECOVERING', 'CRITICAL', 'ERROR', 'WARNING',
-        'STOPPED',
+        'SUSPEND',
     )
 
     def __init__(self, name, desired_capacity, profile_id,
@@ -564,10 +564,18 @@ class Cluster(object):
         values.update({'status': status, 'status_reason': reason})
         co.Cluster.update(ctx, self.id, values)
 
-    def do_stop(self, context, **kwargs):
-        """Stop cluster.
+    def do_suspend(self, context, **kwargs):
+        """Suspend cluster.
 
-        Set cluster status to STOPPED.
+        Set cluster status to Suspend.
         """
-        self.set_status(context, self.STOPPED, _('Cluster stopped'))
-        return True,_('Cluster stopped.')
+        self.set_status(context, self.SUSPEND, _('Cluster suspend'))
+        return True, _('Cluster stopped.')
+
+    def do_resume(self, context, **kwargs):
+        """Resume cluster.
+
+        Set cluster status to ACTIVE.
+        """
+        self.set_status(context, self.ACTIVE, _('Cluster resume'))
+        return True, _('Cluster actived.')

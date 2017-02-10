@@ -1259,9 +1259,9 @@ class EngineService(service.Service):
         # Validation
         db_cluster = self.cluster_find(context, identity)
 
-        if db_cluster.status in [cluster_mod.Cluster.STOPPED]:
+        if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
             raise exception.ForbiddenAction(type='cluster', id=identity,
-                                             status=db_cluster.status)
+                                            status=db_cluster.status)
 
         if count is not None:
             count = utils.parse_int_param('count', count, allow_zero=False)
@@ -1306,9 +1306,9 @@ class EngineService(service.Service):
 
         db_cluster = self.cluster_find(context, identity)
 
-        if db_cluster.status in [cluster_mod.Cluster.STOPPED]:
+        if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
             raise exception.ForbiddenAction(type='cluster', id=identity,
-                                             status=db_cluster.status)
+                                            status=db_cluster.status)
 
         if count is not None:
             count = utils.parse_int_param('count', count, allow_zero=False)
@@ -1420,8 +1420,8 @@ class EngineService(service.Service):
         return {'action': action_id}
 
     @request_context
-    def cluster_stop(self, context, identity, params=None):
-        """Stop a cluster.
+    def cluster_suspend(self, context, identity, params=None):
+        """Suspend a cluster.
 
         :param context: An instance of the request context.
         :param identity: The UUID, name or short-id of a cluster.
@@ -1429,22 +1429,53 @@ class EngineService(service.Service):
                        the check operation.
         :return: A dictionary containing the ID of the action triggered.
         """
-        LOG.info(_LI('Stopping cluster %s'), identity)
+        LOG.info(_LI('Suspending cluster %s'), identity)
         db_cluster = self.cluster_find(context, identity)
 
-        if db_cluster.status in [cluster_mod.Cluster.STOPPED]:
+        if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
             raise exception.ForbiddenAction(type='cluster', id=identity,
-                                             status=db_cluster.status)
+                                            status=db_cluster.status)
 
         params = {
             'name': 'cluster_stop_%s' % db_cluster.id[:8],
             'cause': action_mod.CAUSE_RPC,
             'status': action_mod.Action.READY,
+            'inputs': params,
         }
         action_id = action_mod.Action.create(context, db_cluster.id,
-                                             consts.CLUSTER_STOP, **params)
+                                             consts.CLUSTER_SUSPEND, **params)
         dispatcher.start_action()
-        LOG.info(_LI("Cluster stop action queued: %s."), action_id)
+        LOG.info(_LI("Cluster suspend action queued: %s."), action_id)
+
+        return {'action': action_id}
+
+    @request_context
+    def cluster_resume(self, context, identity, params=None):
+        """Resume a cluster.
+
+        :param context: An instance of the request context.
+        :param identity: The UUID, name or short-id of a cluster.
+        :param params: A dictionary containing additional parameters for
+                       the check operation.
+        :return: A dictionary containing the ID of the action triggered.
+        """
+        LOG.info(_LI('Resuming cluster %s'), identity)
+        db_cluster = self.cluster_find(context, identity)
+
+        if db_cluster.status not in [cluster_mod.Cluster.SUSPEND]:
+            raise exception.ForbiddenAction(type='cluster', id=identity,
+                                            status=db_cluster.status)
+
+        params = {
+            'name': 'cluster_resume_%s' % db_cluster.id[:8],
+            'cause': action_mod.CAUSE_RPC,
+            'status': action_mod.Action.READY,
+            'inputs': params,
+        }
+        action_id = action_mod.Action.create(context, db_cluster.id,
+                                             consts.CLUSTER_RESUME, **params)
+        dispatcher.start_action()
+        LOG.info(_LI("Cluster resume action queued: %s."), action_id)
 
         return {'action': action_id}
 

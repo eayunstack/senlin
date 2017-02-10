@@ -118,11 +118,11 @@ class ClusterController(wsgi.Controller):
     SUPPORTED_ACTIONS = (
         ADD_NODES, DEL_NODES, SCALE_OUT, SCALE_IN, RESIZE,
         POLICY_ATTACH, POLICY_DETACH, POLICY_UPDATE,
-        CHECK, RECOVER, STOP
+        CHECK, RECOVER, SUSPEND, RESUME
     ) = (
         'add_nodes', 'del_nodes', 'scale_out', 'scale_in', 'resize',
         'policy_attach', 'policy_detach', 'policy_update',
-        'check', 'recover', 'stop'
+        'check', 'recover', 'suspend', 'RESUME'
     )
 
     @util.policy_enforce
@@ -351,10 +351,14 @@ class ClusterController(wsgi.Controller):
                 raise exc.HTTPBadRequest(msg)
             res = self.rpc_client.cluster_check(req.context, cluster_id,
                                                 params=params)
-        elif this_action == self.STOP:
+        elif this_action == self.SUSPEND:
             params = body.get(this_action)
-            res = self.rpc_client.cluster_stop(req.context, cluster_id,
+            res = self.rpc_client.cluster_suspend(req.context, cluster_id,
                                                params=params)
+        elif this_action == self.RESUME:
+            params = body.get(this_action)
+            res = self.rpc_client.cluster_resume(req.context, cluster_id,
+                                                params=params)
         else:
             # this_action == self.RECOVER:
             params = body.get(this_action)
