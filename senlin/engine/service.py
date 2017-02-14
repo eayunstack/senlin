@@ -1665,6 +1665,12 @@ class EngineService(service.Service):
             raise exception.ActionInProgress(type='node', id=identity,
                                              status=node.status)
 
+        elif node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': node.status}
+            msg = _('Delete failed because node %(id)s is in %(status)s '
+                    'status.' % v)
+            raise exception.ActionForbidden(message=msg)
+
         containers = node.dependents.get('containers', None)
         if containers is not None and len(containers) > 0:
             raise exception.ResourceInUse(resource_type='host_node',
@@ -1732,6 +1738,12 @@ class EngineService(service.Service):
 
         db_node = self.node_find(context, identity)
 
+        if db_node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Check failed because node %(id)s is in %(status)s status,'
+                    ' please remove protect at first.' % v)
+            raise exception.ActionForbidden(message=msg)
+
         kwargs = {
             'name': 'node_check_%s' % db_node.id[:8],
             'cause': action_mod.CAUSE_RPC,
@@ -1742,6 +1754,87 @@ class EngineService(service.Service):
                                              consts.NODE_CHECK, **kwargs)
         dispatcher.start_action()
         LOG.info(_LI("Node check action is queued: %s."), action_id)
+
+        return {'action': action_id}
+
+    @request_context
+    def node_set_protect(self, context, identity, params=None):
+        """Set protect of specified node.
+
+        :param context: An instance of the request context.
+        :param identity: The UUID, name or short-id of the node.
+        :param params: An dictionary providing additional input parameters
+                       for the checking operation.
+        :return: A dictionary containing the ID of the action triggered by
+                 this request.
+        """
+        LOG.info(_LI("Setting protect node '%s'."), identity)
+
+        db_node = self.node_find(context, identity)
+
+        if db_node.cluster_id == '':
+            v = {'id': identity}
+            msg = _('Set protect failed because the node %(id)s have not join '
+                    'a cluster.' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        elif db_node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Set protect failed because node %(id)s is in %(status)s '
+                    'status' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        kwargs = {
+            'name': 'node_set_protect_%s' % db_node.id[:8],
+            'cause': action_mod.CAUSE_RPC,
+            'status': action_mod.Action.READY,
+            'inputs': params,
+        }
+        action_id = action_mod.Action.create(context, db_node.id,
+                                             consts.NODE_SET_PROTECT, **kwargs)
+        dispatcher.start_action()
+        LOG.info(_LI("Node set protect action is queued: %s."), action_id)
+
+        return {'action': action_id}
+
+    @request_context
+    def node_remove_protect(self, context, identity, params=None):
+        """Remove protect health status of specified node.
+
+        :param context: An instance of the request context.
+        :param identity: The UUID, name or short-id of the node.
+        :param params: An dictionary providing additional input parameters
+                       for the checking operation.
+        :return: A dictionary containing the ID of the action triggered by
+                 this request.
+        """
+        LOG.info(_LI("Removing protect node '%s'."), identity)
+
+        db_node = self.node_find(context, identity)
+
+        if db_node.cluster_id == '':
+            v = {'id': identity}
+            msg = _('Remove protect failed because node %(id)s have not join '
+                    'a cluster.' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        elif db_node.status not in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Remove protect failed because node %(id)s is not in '
+                    '%(status)s status.' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        kwargs = {
+            'name': 'node_remove_protect_%s' % db_node.id[:8],
+            'cause': action_mod.CAUSE_RPC,
+            'status': action_mod.Action.READY,
+            'inputs': params,
+        }
+        action_id = action_mod.Action.create(context, db_node.id,
+                                             consts.NODE_REMOVE_PROTECT,
+                                             **kwargs)
+        dispatcher.start_action()
+        LOG.info(_LI("Node remove protect action is queued: %s."), action_id)
 
         return {'action': action_id}
 
@@ -1759,6 +1852,17 @@ class EngineService(service.Service):
         LOG.info(_LI("Recovering node '%s'."), identity)
 
         db_node = self.node_find(context, identity)
+
+        if db_node.status in [node_mod.Node.ACTIVE]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('The node %(id)s is in %(status)s.' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        elif db_node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Set protect failed because node %(id)s is in %(status)s '
+                    'status' % v)
+            raise exception.ActionForbidden(message=msg)
 
         kwargs = {
             'name': 'node_recover_%s' % db_node.id[:8],

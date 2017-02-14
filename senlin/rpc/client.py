@@ -270,6 +270,16 @@ class EngineClient(object):
                                              identity=identity,
                                              params=params))
 
+    def node_set_protect(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_set_protect',
+                                             identity=identity,
+                                             params=params))
+
+    def node_remove_protect(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_remove_protect',
+                                             identity=identity,
+                                             params=params))
+
     def node_recover(self, ctxt, identity, params=None):
         return self.call(ctxt, self.make_msg('node_recover',
                                              identity=identity,

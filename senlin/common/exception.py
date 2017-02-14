@@ -190,6 +190,10 @@ class ActionInProgress(SenlinException):
     msg_fmt = _("The %(type)s %(id)s is in status %(status)s.")
 
 
+class ActionForbidden(SenlinException):
+    msg_fmt = _("%(message)s")
+
+
 class NodeNotOrphan(SenlinException):
     msg_fmt = _("%(message)s")
 

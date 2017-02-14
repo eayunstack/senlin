@@ -217,6 +217,27 @@ class NodeAction(base.Action):
         else:
             return self.RES_ERROR, _('Node status is not ACTIVE.')
 
+    def do_set_protect(self):
+        """Handler for the NODE_SET_PROTECT action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        res, reason = self.node.do_set_protect(self.context)
+        result = self.RES_OK if res else self.RES_ERROR
+
+        return result, reason
+
+    def do_remove_protect(self):
+        """Handler for the NODE_SET_PROTECT action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        res = self.node.do_remove_protect(self.context)
+        res, reason = self.node.do_remove_protect(self.context)
+        result = self.RES_OK if res else self.RES_ERROR
+
+        return result, reason
+
     def do_recover(self):
         """Handler for the NODE_RECOVER action.
 
