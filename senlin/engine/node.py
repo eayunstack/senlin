@@ -285,6 +285,14 @@ class Node(object):
             self.set_status(context, self.ERROR, six.text_type(ex))
             return False
 
+    def do_remove(self, context):
+        try:
+            no.Node.delete(context, self.id)
+            return True
+        except exc.EResourceDeletion as ex:
+            self.set_status(context, self.ERROR, six.text_type(ex))
+            return False
+
     def do_update(self, context, params):
         """Update a node's property.
 
