@@ -307,6 +307,21 @@ class Policy(object):
         self._lbaasclient = driver.SenlinDriver().loadbalancing(params)
         return self._lbaasclient
 
+    def eayunlbaas(self, user, project):
+        """Construct LB service client based on user and project.
+
+        :param user: The ID of the requesting user.
+        :param project: The ID of the requesting project.
+        :returns: A reference to the LB service client.
+        """
+        if self._lbaasclient is not None:
+            return self._lbaasclient
+
+        params = self._build_conn_params(user, project)
+
+        self._lbaasclient = driver.SenlinDriver().eayunlbaas(params)
+        return self._lbaasclient
+
     def attach(self, cluster):
         '''Method to be invoked before policy is attached to a cluster.
 

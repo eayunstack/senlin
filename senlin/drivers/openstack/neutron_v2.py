@@ -117,6 +117,12 @@ class NeutronClient(base.DriverBase):
         return pool
 
     @sdk.translate_exception
+    def pool_get_v1(self, name_or_id, ignore_missing=False):
+        pool = self.conn.network.find_pool_v1(name_or_id,
+                                              ignore_missing)
+        return pool
+
+    @sdk.translate_exception
     def pool_list(self):
         pools = [p for p in self.conn.network.pools()]
         return pools
@@ -176,9 +182,30 @@ class NeutronClient(base.DriverBase):
         return res
 
     @sdk.translate_exception
+    def pool_member_create_v1(self, pool_id, address, protocol_port,
+                              weight=None, admin_state_up=True):
+        kwargs = {
+            'address': address,
+            'protocol_port': protocol_port,
+            'admin_state_up': admin_state_up,
+        }
+
+        if weight is not None:
+            kwargs['weight'] = weight
+        res = self.conn.network.create_pool_member_v1(pool_id, **kwargs)
+        return res
+
+    @sdk.translate_exception
     def pool_member_delete(self, pool_id, member_id, ignore_missing=True):
         self.conn.network.delete_pool_member(
             member_id, pool_id, ignore_missing=ignore_missing)
+        return
+
+    @sdk.translate_exception
+    def pool_member_delete_v1(self, member_id, ignore_missing=True):
+        self.conn.network.delete_pool_member_v1(
+            member_id, ignore_missing=ignore_missing
+        )
         return
 
     @sdk.translate_exception
