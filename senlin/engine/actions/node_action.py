@@ -28,11 +28,13 @@ class NodeAction(base.Action):
     ACTIONS = (
         NODE_CREATE, NODE_DELETE, NODE_UPDATE,
         NODE_JOIN, NODE_LEAVE,
-        NODE_CHECK, NODE_RECOVER
+        NODE_CHECK, NODE_RECOVER,
+        NODE_REMOVE
     ) = (
         'NODE_CREATE', 'NODE_DELETE', 'NODE_UPDATE',
         'NODE_JOIN', 'NODE_LEAVE',
-        'NODE_CHECK', 'NODE_RECOVER'
+        'NODE_CHECK', 'NODE_RECOVER',
+        'NODE_REMOVE'
     )
 
     def __init__(self, target, action, context, **kwargs):
@@ -113,6 +115,43 @@ class NodeAction(base.Action):
             return self.RES_OK, _('Node deleted successfully.')
         else:
             return self.RES_ERROR, _('Node deletion failed.')
+
+    def do_remove(self):
+        """Handler for the NODE_REMOVE action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        if self.node.cluster_id and self.cause == base.CAUSE_RPC:
+            # If node belongs to a cluster, check size constraint
+            # before deleting it
+            cluster = cm.Cluster.load(self.context, self.node.cluster_id)
+            result = scaleutils.check_size_params(cluster,
+                                                  cluster.desired_capacity - 1,
+                                                  None, None, True)
+            if result:
+                return self.RES_ERROR, result
+
+            # handle grace_period
+            pd = self.data.get('deletion', None)
+            if pd:
+                grace_period = pd.get('grace_period', 0)
+                if grace_period:
+                    eventlet.sleep(grace_period)
+            # check if desired_capacity should be changed
+            do_reduce = True
+            pd = self.data.get('deletion', None)
+            if pd:
+                do_reduce = pd.get('reduce_desired_capacity', True)
+            if do_reduce:
+                cluster.desired_capacity -= 1
+                cluster.store(self.context)
+            cluster.remove_node(self.node.id)
+
+        res = self.node.do_remove(self.context)
+        if res:
+            return self.RES_OK, _('Node remove successfully.')
+        else:
+            return self.RES_ERROR, _('Node remove failed.')
 
     def do_update(self):
         """Handler for the NODE_UPDATE action.

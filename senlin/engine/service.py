@@ -1683,6 +1683,41 @@ class EngineService(service.Service):
         return {'action': action_id}
 
     @request_context
+    def node_remove(self, context, identity, params=None):
+        """Remove the specified node to a nova instance.
+
+        :param context: An instance of the request context.
+        :param identity: The UUID, name or short-id of the node.
+        :return: A dictionary containing the ID of the action triggered by
+                 this request.
+        """
+        LOG.info(_LI('Removing node %s'), identity)
+
+        node = self.node_find(context, identity)
+
+        if node.status in [node_mod.Node.CREATING, node_mod.Node.UPDATING,
+                           node_mod.Node.DELETING, node_mod.Node.RECOVERING]:
+            raise exception.ActionInProgress(type='node', id=identity,
+                                             status=node.status)
+
+        containers = node.dependents.get('containers', None)
+        if containers is not None and len(containers) > 0:
+            raise exception.ResourceInUse(resource_type='host_node',
+                                          resource_id=node.id)
+
+        params = {
+            'name': 'node_remove_%s' % node.id[:8],
+            'cause': action_mod.CAUSE_RPC,
+            'status': action_mod.Action.READY,
+        }
+        action_id = action_mod.Action.create(context, node.id,
+                                             consts.NODE_REMOVE, **params)
+        dispatcher.start_action()
+        LOG.info(_LI("Node remove action is queued: %s."), action_id)
+
+        return {'action': action_id}
+
+    @request_context
     def node_check(self, context, identity, params=None):
         """Check the health status of specified node.
 

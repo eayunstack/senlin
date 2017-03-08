@@ -265,6 +265,11 @@ class EngineClient(object):
                                              identity=identity,
                                              params=params))
 
+    def node_remove(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_remove',
+                                             identity=identity,
+                                             params=params))
+
     def node_recover(self, ctxt, identity, params=None):
         return self.call(ctxt, self.make_msg('node_recover',
                                              identity=identity,
