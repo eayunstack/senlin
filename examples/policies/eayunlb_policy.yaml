@@ -1,0 +1,15 @@
+# Load-balancing policy spec using Neutron LBaaS service
+type: senlin.policy.eayun_lbaas
+version: 1.0
+description: A policy for load-balancing the nodes in a cluster.
+properties:
+  pool:
+    # Has exist pool name or id
+    pool_id: name_or_id
+
+    # Port on which servers are running on the members
+    protocol_port: 80
+
+  # Time in second to wait for loadbalancer to become ready before and after
+  # senlin requests lbaas V2 service for lb operations.
+  lb_status_timeout: 300
