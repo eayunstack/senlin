@@ -59,9 +59,9 @@ class NodeController(wsgi.Controller):
     REQUEST_SCOPE = 'nodes'
 
     SUPPORTED_ACTIONS = (
-        NODE_CHECK, NODE_RECOVER, NODE_REMOVE
+        NODE_CHECK, NODE_RECOVER, NODE_SET_PROTECT, NODE_REMOVE_PROTECT
     ) = (
-        'check', 'recover', 'remove'
+        'check', 'recover', 'remove', 'set_protect', 'remove_protect'
     )
 
     @util.policy_enforce
@@ -197,6 +197,22 @@ class NodeController(wsgi.Controller):
                 raise exc.HTTPBadRequest(msg)
             res = self.rpc_client.node_remove(req.context, node_id,
                                               params=params)
+
+        elif this_action == self.NODE_SET_PROTECT:
+            params = body.get(this_action)
+            if not isinstance(params, dict):
+                msg = _("The params provided is not a map.")
+                raise exc.HTTPBadRequest(msg)
+            res = self.rpc_client.node_set_protect(req.context, node_id,
+                                                   params=params)
+
+        elif this_action == self.NODE_REMOVE_PROTECT:
+            params = body.get(this_action)
+            if not isinstance(params, dict):
+                msg = _("The params provided is not a map.")
+                raise exc.HTTPBadRequest(msg)
+            res = self.rpc_client.node_remove_protect(req.context, node_id,
+                                                      params=params)
 
         else:    # self.NODE_RECOVER
             params = body.get(this_action)

@@ -232,17 +232,22 @@ def nodes_by_random(nodes, count):
     :return: a list of IDs for victim nodes.
     """
     selected, candidates = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in candidates if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
+    count = count if count <= len(general_nodes) else len(general_nodes)
     random.seed()
 
     i = count
     while i > 0:
-        rand = random.randrange(len(candidates))
-        selected.append(candidates[rand].id)
-        candidates.remove(candidates[rand])
+        rand = random.randrange(len(general_nodes))
+        selected.append(general_nodes[rand].id)
+        general_nodes.remove(general_nodes[rand])
         i = i - 1
 
     return selected
@@ -257,11 +262,17 @@ def nodes_by_age(nodes, count, old_first):
     :return: a list of IDs for victim nodes.
     """
     selected, candidates = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in candidates if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
-    sorted_list = sorted(candidates, key=lambda r: r.created_at)
+    count = count if count <= len(general_nodes) else len(general_nodes)
+
+    sorted_list = sorted(general_nodes, key=lambda r: r.created_at)
     for i in range(count):
         if old_first:
             selected.append(sorted_list[i].id)
@@ -280,20 +291,28 @@ def nodes_by_profile_age(nodes, count):
     :return: a list of IDs for victim nodes.
     """
     selected, nodes = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in nodes if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
+    count = count if count <= len(general_nodes) else len(general_nodes)
+
     node_map = []
-    for node in nodes:
+    for node in general_nodes:
         entry = {
             'id': node.id,
-            'created_at': node.rt['profile'].created_at
+            'created_at': node.rt['profile'].created_at,
+            'status': node.status
         }
         node_map.append(entry)
 
     sorted_map = sorted(node_map, key=lambda m: m['created_at'])
     for i in range(count):
-        selected.append(sorted_map[i]['id'])
+        if sorted_map[i]['status'] != 'PROTECTED':
+            selected.append(sorted_map[i]['id'])
 
     return selected

@@ -34,10 +34,10 @@ class Node(object):
 
     statuses = (
         INIT, ACTIVE, ERROR, WARNING, CREATING, UPDATING, DELETING,
-        RECOVERING
+        RECOVERING, PROTECTED
     ) = (
         'INIT', 'ACTIVE', 'ERROR', 'WARNING', 'CREATING', 'UPDATING',
-        'DELETING', 'RECOVERING'
+        'DELETING', 'RECOVERING', 'PROTECTED'
     )
 
     def __init__(self, name, profile_id, cluster_id=None, context=None,
@@ -386,6 +386,16 @@ class Node(object):
                             _("Check: Node is not ACTIVE."))
 
         return res
+
+    def do_set_protect(self, context):
+        self.set_status(context, self.PROTECTED, _('Node set protect.'))
+
+        return True, _('Node set protect.')
+
+    def do_remove_protect(self, context):
+        self.set_status(context, self.ACTIVE, _('Node remove protect.'))
+
+        return True, _('Node remove protect.')
 
     def do_recover(self, context, **options):
         """recover a node.
