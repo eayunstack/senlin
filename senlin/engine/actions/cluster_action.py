@@ -46,7 +46,8 @@ class ClusterAction(base.Action):
         CLUSTER_ADD_NODES, CLUSTER_DEL_NODES,
         CLUSTER_RESIZE, CLUSTER_CHECK, CLUSTER_RECOVER,
         CLUSTER_SCALE_OUT, CLUSTER_SCALE_IN,
-        CLUSTER_ATTACH_POLICY, CLUSTER_DETACH_POLICY, CLUSTER_UPDATE_POLICY
+        CLUSTER_ATTACH_POLICY, CLUSTER_DETACH_POLICY, CLUSTER_UPDATE_POLICY,
+        CLUSTER_SUSPEND, CLUSTER_RESUME,
     ) = (
         consts.CLUSTER_CREATE, consts.CLUSTER_DELETE, consts.CLUSTER_UPDATE,
         consts.CLUSTER_ADD_NODES, consts.CLUSTER_DEL_NODES,
@@ -54,6 +55,7 @@ class ClusterAction(base.Action):
         consts.CLUSTER_SCALE_OUT, consts.CLUSTER_SCALE_IN,
         consts.CLUSTER_ATTACH_POLICY, consts.CLUSTER_DETACH_POLICY,
         consts.CLUSTER_UPDATE_POLICY,
+        consts.CLUSTER_SUSPEND, consts.CLUSTER_RESUME,
     )
 
     def __init__(self, target, action, context, **kwargs):
@@ -740,6 +742,26 @@ class ClusterAction(base.Action):
         res, reason = self.cluster.update_policy(self.context, policy_id,
                                                  **self.inputs)
         result = self.RES_OK if res else self.RES_ERROR
+        return result, reason
+
+    def do_suspend(self):
+        """Handler for the CLUSTER_SUSPEND action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        res, reason = self.cluster.do_suspend(self.context)
+        result = self.RES_OK if res else self.RES_ERROR
+
+        return result, reason
+
+    def do_resume(self):
+        """Handler for the CLUSTER_RESUME action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        res, reason = self.cluster.do_resume(self.context)
+        result = self.RES_OK if res else self.RES_ERROR
+
         return result, reason
 
     def _execute(self, **kwargs):

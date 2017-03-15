@@ -229,6 +229,16 @@ class EngineClient(object):
                                              identity=identity,
                                              params=params))
 
+    def cluster_suspend(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('cluster_suspend',
+                                             identity=identity,
+                                             params=params))
+
+    def cluster_resume(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('cluster_resume',
+                                             identity=identity,
+                                             params=params))
+
     def node_list(self, ctxt, cluster_id=None, limit=None, marker=None,
                   sort=None, filters=None, project_safe=True):
         return self.call(ctxt,
