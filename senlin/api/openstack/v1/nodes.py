@@ -59,7 +59,8 @@ class NodeController(wsgi.Controller):
     REQUEST_SCOPE = 'nodes'
 
     SUPPORTED_ACTIONS = (
-        NODE_CHECK, NODE_RECOVER, NODE_SET_PROTECT, NODE_REMOVE_PROTECT
+        NODE_CHECK, NODE_RECOVER, NODE_REMOVE, NODE_SET_PROTECT,
+        NODE_REMOVE_PROTECT
     ) = (
         'check', 'recover', 'remove', 'set_protect', 'remove_protect'
     )

@@ -252,8 +252,17 @@ class NeutronClient(base.DriverBase):
         return
 
     @sdk.translate_exception
-    def port_create(self, **attr):
-        res = self.conn.network.create_port(**attr)
+    def port_create(self, net_id, subnet_id, name=None):
+        kwargs = {
+            "fixed_ips": [
+                {"subnet_id": subnet_id}
+            ],
+            "network_id": net_id,
+        }
+        if name is not None:
+            kwargs['name'] = name
+
+        res = self.conn.network.create_port(**kwargs)
         return res
 
     @sdk.translate_exception

@@ -52,9 +52,9 @@ class ServerProfile(base.Profile):
     )
 
     NETWORK_KEYS = (
-        PORT, FIXED_IP, NETWORK,
+        PORT, FIXED_IP, NETWORK, SUBNET_ID,
     ) = (
-        'port', 'fixed_ip', 'network',
+        'port', 'fixed_ip', 'network', 'subnet_id',
     )
 
     PERSONALITY_KEYS = (
@@ -164,6 +164,10 @@ class ServerProfile(base.Profile):
                 schema={
                     NETWORK: schema.String(
                         _('Name or ID of network to create a port on.'),
+                    ),
+                    SUBNET_ID: schema.String(
+                        _('Name or ID of subnet for the port on which nodes '
+                          'can be connected.'),
                     ),
                     PORT: schema.String(
                         _('Port ID to be used by the network.'),
@@ -375,10 +379,6 @@ class ServerProfile(base.Profile):
         if net_ident:
             try:
                 net = self.network(obj).network_get(net_ident)
-                if reason == 'update':
-                    result['net_id'] = net.id
-                else:
-                    result['uuid'] = net.id
             except exc.InternalError as ex:
                 error = six.text_type(ex)
 
@@ -412,6 +412,16 @@ class ServerProfile(base.Profile):
                     result['fixed_ips'] = [{'ip_address': fixed_ip}]
                 else:
                     result['fixed_ip'] = fixed_ip
+
+        # create port
+        subnet_id = network.get(self.SUBNET_ID)
+        if not error and subnet_id:
+            try:
+                port_info = self.network(obj).port_create(net.id, subnet_id)
+                port_id = port_info.id
+                result['port'] = port_id
+            except exc.InternalError as ex:
+                error = six.text_type(ex)
 
         if error:
             if reason == 'create':
