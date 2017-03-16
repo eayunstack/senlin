@@ -559,6 +559,20 @@ class ServerProfile(base.Profile):
             raise exc.EResourceDeletion(type='server', id=server_id,
                                         message=six.text_type(ex))
 
+    def do_remove(self, obj, **params):
+        if not obj.physical_id:
+            return True
+
+        server_id = obj.physical_id
+        keys = params.get('keys', None)
+        try:
+            driver = self.compute(obj)
+            driver.server_metadata_delete(server_id, keys)
+            return True
+        except exc.InternalError as ex:
+            raise exc.EResourceDeletion(type='server', id=server_id,
+                                        message=six.text_type(ex))
+
     def _check_server_name(self, obj, profile):
         """Check if there is a new name to be assigned to the server.
 

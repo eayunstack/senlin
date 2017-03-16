@@ -286,7 +286,16 @@ class Node(object):
             return False
 
     def do_remove(self, context):
+        metadata_keys = ['cluster_node_id']
+        if self.cluster_id:
+            metadata_keys += ['cluster_id', 'cluster_node_index']
+
+        params = {
+            'keys': metadata_keys
+        }
+
         try:
+            pb.Profile.remove_object(context, self, **params)
             no.Node.delete(context, self.id)
             return True
         except exc.EResourceDeletion as ex:
