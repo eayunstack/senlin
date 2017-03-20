@@ -232,7 +232,6 @@ class NodeAction(base.Action):
 
         :returns: A tuple containing the result and the corresponding reason.
         """
-        res = self.node.do_remove_protect(self.context)
         res, reason = self.node.do_remove_protect(self.context)
         result = self.RES_OK if res else self.RES_ERROR
 
