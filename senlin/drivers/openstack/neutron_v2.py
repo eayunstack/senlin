@@ -283,8 +283,9 @@ class NeutronClient(base.DriverBase):
         return res
 
     @sdk.translate_exception
-    def floatingip_create(self, **attr):
-        res = self.conn.network.create_ip(**attr)
+    def floatingip_create(self, float_netid):
+        kwargs = {"floating_network_id": float_netid}
+        res = self.conn.network.create_ip(**kwargs)
         return res
 
     @sdk.translate_exception

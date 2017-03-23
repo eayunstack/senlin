@@ -52,9 +52,9 @@ class ServerProfile(base.Profile):
     )
 
     NETWORK_KEYS = (
-        PORT, FIXED_IP, NETWORK, SUBNET_ID,
+        PORT, FIXED_IP, NETWORK, SUBNET_ID, FLOATING_NETWORK,
     ) = (
-        'port', 'fixed_ip', 'network', 'subnet_id',
+        'port', 'fixed_ip', 'network', 'subnet_id', 'floating_network',
     )
 
     PERSONALITY_KEYS = (
@@ -174,6 +174,9 @@ class ServerProfile(base.Profile):
                     ),
                     FIXED_IP: schema.String(
                         _('Fixed IP to be used by the network.'),
+                    ),
+                    FLOATING_NETWORK: schema.String(
+                        _('Name or ID of network to create a port on.'),
                     ),
                 },
             ),
@@ -382,6 +385,14 @@ class ServerProfile(base.Profile):
             except exc.InternalError as ex:
                 error = six.text_type(ex)
 
+        float_ident = network.get(self.FLOATING_NETWORK)
+        if float_ident:
+            try:
+                float_net = self.network(obj).floatingip_create(float_ident)
+                result['float_ip'] = float_net.floating_ip_address
+            except exc.InternalError as ex:
+                error = six.text_type(ex)
+
         # check port
         port_ident = network.get(self.PORT)
         if not error and port_ident:
@@ -503,10 +514,13 @@ class ServerProfile(base.Profile):
             kwargs['user_data'] = encodeutils.safe_decode(base64.b64encode(ud))
 
         networks = self.properties[self.NETWORKS]
+        float_ip = None
         if networks is not None:
             kwargs['networks'] = []
             for net_spec in networks:
                 net = self._validate_network(obj, net_spec, 'create')
+                if 'float_ip' in net:
+                    float_ip = net.pop('float_ip')
                 kwargs['networks'].append(net)
 
         secgroups = self.properties[self.SECURITY_GROUPS]
@@ -526,9 +540,17 @@ class ServerProfile(base.Profile):
         try:
             server = self.compute(obj).server_create(**kwargs)
             self.compute(obj).wait_for_server(server.id)
-            return server.id
         except exc.InternalError as ex:
             raise exc.EResourceCreation(type='server', message=ex.message)
+
+        # server floating ip associate
+        if float_ip:
+            try:
+                self.compute(obj).server_floatingip_associate(server.id,
+                                                              float_ip)
+            except exc.InternalError as ex:
+                raise exc.EResourceCreation(type='server', message=ex.message)
+        return server.id
 
     def do_delete(self, obj, **params):
         """Delete the physical resource associated with the specified node.
