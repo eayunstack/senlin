@@ -207,6 +207,11 @@ class Profile(object):
         return profile.do_delete(obj, **params)
 
     @classmethod
+    def remove_object(cls, ctx, obj, **params):
+        profile = cls.load(ctx, profile_id=obj.profile_id)
+        return profile.do_remove(obj, **params)
+
+    @classmethod
     def update_object(cls, ctx, obj, new_profile_id=None, **params):
         profile = cls.load(ctx, profile_id=obj.profile_id)
         new_profile = None
@@ -333,6 +338,10 @@ class Profile(object):
         raise NotImplementedError
 
     def do_delete(self, obj, **params):
+        """For subclass to override."""
+        raise NotImplementedError
+
+    def do_remove(self, obj, **params):
         """For subclass to override."""
         raise NotImplementedError
 
