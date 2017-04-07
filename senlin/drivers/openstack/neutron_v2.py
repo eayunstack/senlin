@@ -272,7 +272,10 @@ class NeutronClient(base.DriverBase):
         return res
 
     @sdk.translate_exception
-    def port_update(self, port, **attr):
+    def port_update(self, port, secgroups):
+        attr = {
+            'security_groups': secgroups
+        }
         res = self.conn.network.update_port(port, **attr)
         return res
 

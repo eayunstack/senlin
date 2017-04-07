@@ -515,17 +515,28 @@ class ServerProfile(base.Profile):
 
         networks = self.properties[self.NETWORKS]
         float_ip = None
+        port_id = []
         if networks is not None:
             kwargs['networks'] = []
             for net_spec in networks:
                 net = self._validate_network(obj, net_spec, 'create')
                 if 'float_ip' in net:
                     float_ip = net.pop('float_ip')
+                port_id.append(net['port'])
                 kwargs['networks'].append(net)
 
         secgroups = self.properties[self.SECURITY_GROUPS]
         if secgroups:
+            # nova boot instance default use default security group,
+            # so must boot configure security group
             kwargs['security_groups'] = [{'name': sg} for sg in secgroups]
+            # nova boot security group passing parameters not to take effect,
+            # so must use port_update update security_group
+            for port in port_id:
+                try:
+                    self.network(obj).port_update(port, secgroups)
+                except exc.InternalError as ex:
+                    raise exc.Error(msg=ex)
 
         if 'placement' in obj.data:
             if 'zone' in obj.data['placement']:
