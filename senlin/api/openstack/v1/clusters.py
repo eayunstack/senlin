@@ -122,7 +122,7 @@ class ClusterController(wsgi.Controller):
     ) = (
         'add_nodes', 'del_nodes', 'scale_out', 'scale_in', 'resize',
         'policy_attach', 'policy_detach', 'policy_update',
-        'check', 'recover', 'suspend', 'RESUME'
+        'check', 'recover', 'suspend', 'resume'
     )
 
     @util.policy_enforce
