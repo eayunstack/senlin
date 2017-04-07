@@ -296,3 +296,12 @@ class NovaClient(base.DriverBase):
                                                  service.host,
                                                  service.binary,
                                                  disabled_reason)
+
+    @sdk.translate_exception
+    def server_floatingip_associate(self, server, address):
+        return self.conn.compute.add_floating_ip_to_server(server, address)
+
+    @sdk.translate_exception
+    def server_floatingip_disassociate(self, server, address):
+        return self.conn.compute.remove_floating_ip_from_server(server,
+                                                                address)
