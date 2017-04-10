@@ -354,11 +354,11 @@ class ClusterController(wsgi.Controller):
         elif this_action == self.SUSPEND:
             params = body.get(this_action)
             res = self.rpc_client.cluster_suspend(req.context, cluster_id,
-                                               params=params)
+                                                  params=params)
         elif this_action == self.RESUME:
             params = body.get(this_action)
             res = self.rpc_client.cluster_resume(req.context, cluster_id,
-                                                params=params)
+                                                 params=params)
         else:
             # this_action == self.RECOVER:
             params = body.get(this_action)
