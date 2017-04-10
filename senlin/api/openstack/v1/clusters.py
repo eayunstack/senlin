@@ -32,6 +32,7 @@ class ClusterData(object):
     def __init__(self, data):
         self.name = data.get(consts.CLUSTER_NAME, None)
         self.profile = data.get(consts.CLUSTER_PROFILE, None)
+        self.profile_only = data.get(consts.CLUSTER_PROFILE_ONLY, False)
         self.metadata = data.get(consts.CLUSTER_METADATA, None)
 
         self.desired_capacity = data.get(consts.CLUSTER_DESIRED_CAPACITY, None)
@@ -199,8 +200,8 @@ class ClusterController(wsgi.Controller):
         data.validate_for_update()
 
         cluster = self.rpc_client.cluster_update(
-            req.context, cluster_id, data.name, data.profile, data.metadata,
-            data.timeout)
+            req.context, cluster_id, data.name, data.profile,
+            data.metadata, data.timeout, data.profile_only)
         action_id = cluster.pop('action')
         result = {
             'cluster': cluster,

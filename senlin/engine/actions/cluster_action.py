@@ -218,6 +218,7 @@ class ClusterAction(base.Action):
         metadata = self.inputs.get('metadata')
         timeout = self.inputs.get('timeout')
         profile_id = self.inputs.get('new_profile_id')
+        profile_only = self.inputs.get('profile_only')
 
         if name is not None:
             self.cluster.name = name
@@ -235,6 +236,16 @@ class ClusterAction(base.Action):
 
         fmt = _LI("Updating cluster '%(cluster)s': profile='%(profile)s'.")
         LOG.info(fmt, {'cluster': self.cluster.id, 'profile': profile_id})
+
+        # check profile_only parameter configure
+        # client transfer profile_only, the profile_only False or True.
+        if profile_only:
+            self.cluster.profile_id = profile_id
+            self.cluster.eval_status(self.context, 'update',
+                                     profile_id=profile_id,
+                                     updated_at=timeutils.utcnow(True))
+            return self.RES_OK, reason
+
         child = []
         for node in self.cluster.nodes:
             kwargs = {

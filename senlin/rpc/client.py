@@ -200,12 +200,14 @@ class EngineClient(object):
                                              count=count))
 
     def cluster_update(self, ctxt, identity, name=None, profile_id=None,
-                       metadata=None, timeout=None):
+                       metadata=None, timeout=None, profile_only=False):
         return self.call(ctxt, self.make_msg('cluster_update',
-                                             identity=identity, name=name,
+                                             identity=identity,
+                                             name=name,
                                              profile_id=profile_id,
                                              metadata=metadata,
-                                             timeout=timeout))
+                                             timeout=timeout,
+                                             profile_only=profile_only))
 
     def cluster_delete(self, ctxt, identity, cast=True):
         rpc_method = self.cast if cast else self.call
