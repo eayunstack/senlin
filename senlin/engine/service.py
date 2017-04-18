@@ -864,7 +864,7 @@ class EngineService(service.Service):
 
     @request_context
     def cluster_update(self, context, identity, name=None, profile_id=None,
-                       metadata=None, timeout=None):
+                       metadata=None, timeout=None, profile_only=False):
         """Update a cluster.
 
         :param context: An instance of the request context.
@@ -911,6 +911,8 @@ class EngineService(service.Service):
         if timeout is not None:
             timeout = utils.parse_int_param(consts.CLUSTER_TIMEOUT, timeout)
             inputs['timeout'] = timeout
+
+        inputs['profile_only'] = profile_only
 
         if name is not None:
             inputs['name'] = name
