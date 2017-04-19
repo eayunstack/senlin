@@ -87,7 +87,11 @@ engine_opts = [
     cfg.BoolOpt('name_unique',
                 default=False,
                 help=_('Flag to indicate whether to enforce unique names for '
-                       'Senlin objects belonging to the same project.'))
+                       'Senlin objects belonging to the same project.')),
+    cfg.IntOpt('service_down_time',
+               default=60,
+               help='Maximum time since last check-in for a service to be '
+                    'considered up'),
 ]
 cfg.CONF.register_opts(engine_opts)
 
