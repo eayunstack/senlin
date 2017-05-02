@@ -22,6 +22,9 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import service
 from oslo_service import threadgroup
+from oslo_utils import timeutils
+import six
+import time
 
 from senlin.common import consts
 from senlin.common import context
@@ -31,6 +34,22 @@ from senlin import objects
 from senlin.rpc import client as rpc_client
 
 LOG = logging.getLogger(__name__)
+
+
+def _chase_up(start_time, interval):
+    """Utility function to check if there are missed intervals.
+
+    :param start_time: A time object representing the starting time.
+    :param interval: An integer specifying the time interval in seconds.
+    :returns: Number of seconds to sleep before next round.
+    """
+    end_time = timeutils.utcnow(True)
+    elapsed = timeutils.delta_seconds(start_time, end_time)
+    # check if we have missed any intervals?
+    missed = int((elapsed - 0.0000001) / interval)
+    if missed >= 1:
+        LOG.warning("Poller missed %s intervals for checking", missed)
+    return (missed + 1) * interval - elapsed
 
 
 class NotificationEndpoint(object):
@@ -124,13 +143,70 @@ class HealthManager(service.Service):
         """
         pass
 
-    def _poll_cluster(self, cluster_id):
+    def _wait_for_action(self, ctx, action_id, timeout):
+        done = False
+        total_sleep = 0
+        action = objects.Action.get(self.ctx, action_id, project_safe=False)
+        ctx = context.get_service_context(user=action.user,
+                                          project=action.project)
+        ctx = context.RequestContext.from_dict(ctx)
+        while total_sleep < timeout:
+            action = self.rpc_client.action_get(ctx, action_id)
+            if action['status'] in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
+                if action['status'] == 'SUCCEEDED':
+                    done = True
+                break
+            time.sleep(2)
+            total_sleep += 2
+
+        if done:
+            return True, ""
+        elif total_sleep > timeout:
+            return False, "Timeout while polling cluster status"
+        else:
+            return False, "Cluster check action failed"
+
+    def _poll_cluster(self, cluster_id, timeout):
         """Routine to be executed for polling cluster status.
 
         :param cluster_id: The UUID of the cluster to be checked.
+        :param timeout: The maximum number of seconds to wait.
         :returns: Nothing.
         """
-        self.rpc_client.cluster_check(self.ctx, cluster_id)
+        start_time = timeutils.utcnow(True)
+        cluster = objects.Cluster.get(self.ctx, cluster_id, project_safe=False)
+        if not cluster:
+            LOG.warning("Cluster (%s) is not found.", cluster_id)
+            return _chase_up(start_time, timeout)
+
+        try:
+            ctx = context.get_service_context(user=cluster.user,
+                                              project=cluster.project)
+            ctx = context.RequestContext.from_dict(ctx)
+            action = self.rpc_client.cluster_check(ctx, cluster_id)
+        except Exception as ex:
+            LOG.warning("Failed in triggering 'cluster_check' RPC for "
+                        "'%(c)s': %(r)s",
+                        {'c': cluster_id, 'r': six.text_type(ex)})
+            return _chase_up(start_time, timeout)
+
+        # wait for action to complete
+        res, reason = self._wait_for_action(ctx, action['action'], timeout)
+        if not res:
+            LOG.warning("%s", reason)
+            return _chase_up(start_time, timeout)
+
+        # loop through nodes to trigger recovery
+        nodes = objects.Node.get_all_by_cluster(ctx, cluster_id)
+        for node in nodes:
+            if node.status != 'ACTIVE':
+                LOG.info("Requesting node recovery: %s", node.id)
+                ctx = context.get_service_context(user=node.user,
+                                                  project=node.project)
+                ctx = context.RequestContext.from_dict(ctx)
+                self.rpc_client.node_recover(ctx, node.id)
+
+        return _chase_up(start_time, timeout)
 
     def _add_listener(self, cluster_id):
         """Routine to be executed for adding cluster listener.
@@ -152,24 +228,26 @@ class HealthManager(service.Service):
         :param entry: A dict containing the data associated with the cluster.
         :returns: An updated registry entry record.
         """
-        if entry['check_type'] == consts.NODE_STATUS_POLLING:
-            interval = min(entry['interval'], cfg.CONF.periodic_interval_max)
-            timer = self.TG.add_timer(interval, self._poll_cluster, None,
-                                      entry['cluster_id'])
+        cid = entry['cluster_id']
+        ctype = entry['check_type']
+        if ctype == consts.NODE_STATUS_POLLING:
+            interval = min(entry['interval'], 60)
+            timer = self.TG.add_dynamic_timer(self._poll_cluster,
+                                              None,  # initial_delay
+                                              None,  # check_interval_max
+                                              cid, interval)
             entry['timer'] = timer
-        elif entry['check_type'] == consts.VM_LIFECYCLE_EVENTS:
-            LOG.info(_LI("Start listening events for cluster (%s)."),
-                     entry['cluster_id'])
-            listener = self._add_listener(entry['cluster_id'])
+        elif ctype == consts.VM_LIFECYCLE_EVENTS:
+            LOG.info("Start listening events for cluster (%s).", cid)
+            listener = self._add_listener(cid)
             if listener:
                 entry['listener'] = listener
             else:
+                LOG.warning("Error creating listener for cluster %s", cid)
                 return None
         else:
-            LOG.warning(_LW("Cluster (%(id)s) check type (%(type)s) is "
-                            "invalid."),
-                        {'id': entry['cluster_id'],
-                         'type': entry['check_type']})
+            LOG.warning("Cluster %(id)s check type %(type)s is invalid.",
+                        {'id': cid, 'type': ctype})
             return None
 
         return entry
