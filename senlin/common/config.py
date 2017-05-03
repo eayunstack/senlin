@@ -40,7 +40,10 @@ engine_opts = [
                help=_('Seconds between running periodic tasks.')),
     cfg.IntOpt('periodic_interval_max',
                default=120,
-               help='Seconds between periodic tasks to be called'),
+               help='Maximum seconds between periodic tasks to be called'),
+    cfg.IntOpt('check_interval_max',
+               default=3600,
+               help='Maximum seconds between cluster check to be called'),
     cfg.IntOpt('periodic_fuzzy_delay',
                default=10,
                help='Range of seconds to randomly delay when starting the'
