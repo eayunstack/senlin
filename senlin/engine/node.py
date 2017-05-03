@@ -380,7 +380,6 @@ class Node(object):
         if not self.physical_id:
             return False
 
-        res = True
         try:
             res = pb.Profile.check_object(context, self)
         except exc.EResourceOperation as ex:
@@ -394,7 +393,7 @@ class Node(object):
             self.set_status(context, self.ERROR,
                             _("Check: Node is not ACTIVE."))
 
-        return res
+        return True
 
     def do_set_protect(self, context):
         self.set_status(context, self.PROTECTED, _('Node set protect.'))
