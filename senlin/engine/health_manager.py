@@ -141,7 +141,7 @@ class HealthManager(service.Service):
         The task is here so that the service always has something to wait()
         on, or else the process will exit.
         """
-        pass
+        self._load_runtime_registry()
 
     def _wait_for_action(self, ctx, action_id, timeout):
         done = False
@@ -283,8 +283,9 @@ class HealthManager(service.Service):
                 'enabled': r.enabled,
             }
 
-            LOG.info(_LI("Loading cluster %s for health monitoring"),
-                     r.cluster_id)
+            LOG.info(_LI("Loading cluster %(c)s enalbed=%(e)s for "
+                         "health monitoring"),
+                     {'c': r.cluster_id, 'e': r.enabled})
 
             entry = self._start_check(entry)
             if entry:
@@ -297,7 +298,6 @@ class HealthManager(service.Service):
         server = rpc.get_rpc_server(self.target, self)
         server.start()
         self.TG.add_timer(cfg.CONF.periodic_interval, self._dummy_task)
-        self._load_runtime_registry()
 
     def stop(self):
         self.TG.stop_timers()

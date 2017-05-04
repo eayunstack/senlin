@@ -242,6 +242,11 @@ class TestHealthManager(base.SenlinTestCase):
         self.assertEqual(consts.RPC_API_VERSION, self.hm.version)
         self.assertEqual(0, len(self.hm.rt['registries']))
 
+    @mock.patch.object(hm.HealthManager, "_load_runtime_registry")
+    def test__dummy_task(self, mock_load):
+        self.hm._dummy_task()
+        mock_load.assert_called_once_with()
+
     @mock.patch.object(hr.HealthRegistry, 'claim')
     def test__load_runtime_registry(self, mock_claim):
         mock_claim.return_value = [
@@ -425,7 +430,6 @@ class TestHealthManager(base.SenlinTestCase):
         x_timer = mock.Mock()
         mock_add_timer = self.patchobject(self.hm.TG, 'add_timer',
                                           return_value=x_timer)
-        mock_load = self.patchobject(self.hm, '_load_runtime_registry')
 
         # do it
         self.hm.start()
@@ -436,9 +440,8 @@ class TestHealthManager(base.SenlinTestCase):
                                             version=consts.RPC_API_VERSION)
         mock_get_rpc.assert_called_once_with(target, self.hm)
         x_rpc_server.start.assert_called_once_with()
-        mock_add_timer.assert_called_once_with(cfg.CONF.periodic_interval,
-                                               self.hm._dummy_task)
-        mock_load.assert_called_once_with()
+        mock_add_timer.assert_called_once_with(
+            cfg.CONF.periodic_interval, self.hm._dummy_task)
 
     @mock.patch.object(hr.HealthRegistry, 'create')
     def test_register_cluster(self, mock_reg_create):
