@@ -1753,6 +1753,7 @@ class EngineService(service.Service):
             'name': 'node_delete_%s' % node.id[:8],
             'cause': action_mod.CAUSE_RPC,
             'status': action_mod.Action.READY,
+            'force': True,
         }
         action_id = action_mod.Action.create(context, node.id,
                                              consts.NODE_DELETE, **params)
