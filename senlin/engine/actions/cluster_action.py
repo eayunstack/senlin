@@ -139,7 +139,7 @@ class ClusterAction(base.Action):
                 # We assume placement is a list
                 kwargs['data'] = {'placement': placement['placements'][m]}
 
-            name = 'node-%s-%003d' % (self.cluster.id[:8], index)
+            name = 'as-%s-%003d' % (self.cluster.id[:8], index)
             node = node_mod.Node(name, self.cluster.profile_id,
                                  self.cluster.id, context=self.context,
                                  **kwargs)
