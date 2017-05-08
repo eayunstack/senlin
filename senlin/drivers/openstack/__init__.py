@@ -18,6 +18,7 @@ from senlin.drivers.openstack import neutron_v2
 from senlin.drivers.openstack import nova_v2
 from senlin.drivers.openstack import zaqar_v2
 from senlin.drivers.openstack import eayun_lbaas
+from senlin.drivers.openstack import cinder_v2
 
 
 compute = nova_v2.NovaClient
@@ -28,3 +29,4 @@ network = neutron_v2.NeutronClient
 orchestration = heat_v1.HeatClient
 telemetry = ceilometer_v2.CeilometerClient
 eayunlbaas = eayun_lbaas.LoadBalancerDriver
+cinder = cinder_v2.CinderClient
