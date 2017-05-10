@@ -121,6 +121,7 @@ class Profile(object):
         self._computeclient = None
         self._networkclient = None
         self._orchestrationclient = None
+        self._cinderclient = None
 
     @classmethod
     def from_object(cls, profile):
@@ -331,6 +332,20 @@ class Profile(object):
         params = self._build_conn_params(obj.user, obj.project)
         oc = driver_base.SenlinDriver().orchestration(params)
         self._orchestrationclient = oc
+        return oc
+
+    def cinder(self, obj):
+        """Construct cinder client based on object.
+
+        :param obj: Object for which the client is created. It is expected to
+                    be None when retrieving an existing client. When creating
+                    a client, it contains the user and project to be used.
+        """
+        if self._cinderclient is not None:
+            return self._cinderclient
+        params = self._build_conn_params(obj.user, obj.project)
+        oc = driver_base.SenlinDriver().cinder(params)
+        self._cinderclient = oc
         return oc
 
     def do_create(self, obj):
