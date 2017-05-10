@@ -578,7 +578,7 @@ class ServerProfile(base.Profile):
 
         server_id = obj.physical_id
         ignore_missing = params.get('ignore_missing', True)
-        force = params.get('force', False)
+        force = params.get('force', True)
 
         try:
             driver = self.compute(obj)
