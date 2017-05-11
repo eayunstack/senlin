@@ -380,6 +380,9 @@ class Node(object):
         if not self.physical_id:
             return False
 
+        if self.status == self.PROTECTED:
+            return True
+
         try:
             res = pb.Profile.check_object(context, self)
         except exc.EResourceOperation as ex:
