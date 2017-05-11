@@ -160,7 +160,8 @@ class LoadBalancingPolicy(base.Policy):
             node.store(oslo_context.get_current())
 
         cluster_data_lb = cluster.data.get('loadbalancers', {})
-        cluster_data_lb[self.id] = {'vip_address': data.pop('vip_address')}
+        cluster_data_lb[self.id] = {'vip_address': data.pop('vip_address'),
+                                    'pool_id': name_or_id}
         cluster.data['loadbalancers'] = cluster_data_lb
 
         policy_data = self._build_policy_data(data)
