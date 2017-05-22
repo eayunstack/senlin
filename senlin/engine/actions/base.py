@@ -457,9 +457,6 @@ class Action(object):
                     self.data['reason'] = _('Policy %s cooldown is still '
                                             'in progress.') % policy.id
                     return
-                else:
-                    self.data['count'] = getattr(
-                        policy, 'adjustment_number', 1)
 
             if method is not None:
                 method(cluster_id, self)
