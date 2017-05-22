@@ -456,7 +456,10 @@ class Action(object):
                     self.data['status'] = policy_mod.CHECK_ERROR
                     self.data['reason'] = _('Policy %s cooldown is still '
                                             'in progress.') % policy.id
-                return
+                    return
+                else:
+                    self.data['count'] = getattr(
+                        policy, 'adjustment_number', 1)
 
             if method is not None:
                 method(cluster_id, self)
