@@ -297,6 +297,8 @@ class LoadBalancingPolicy(base.Policy):
                 action.data['reason'] = _('Failed in removing deleted '
                                           'node(s) from lb pool.')
                 return
+            node.data.pop('lb_member')
+            node.store(action.context)
 
         return
 
