@@ -2391,6 +2391,44 @@ class EngineService(service.Service):
         return receiver.to_dict()
 
     @request_context
+    def receiver_update(self, context, receiver_id, name, action, params):
+        """Update the properties of a given receiver.
+
+        :param context: An instance of the request context.
+        :param receiver_id: The UUID, name or short-id of a receiver.
+        :param name: The new name for the receiver.
+        :param action: Name or ID of an action, currently only builtin action
+                       names are supported.
+        :param params: A dictionary containing key-value pairs as inputs to
+                       the action.
+        :returns: A dictionary containing the details about the receiver
+                 update.
+        """
+        LOG.info(_LI("Updating receiver '%(id)s.'"), {'id': receiver_id})
+
+        db_receiver = self.receiver_find(context, receiver_id)
+        receiver = receiver_mod.Receiver.load(context,
+                                              receiver_obj=db_receiver)
+        changed = False
+        if name is not None and name != receiver.name:
+            receiver.name = name
+            changed = True
+        if action is not None and action != receiver.action:
+            receiver.action = action
+            changed = True
+        if params is not None and params != receiver.params:
+            receiver.params = params
+            changed = True
+        if changed:
+            receiver.store(context)
+        else:
+            msg = _("No property needs an update.")
+            raise exception.BadRequest(msg=msg)
+
+        LOG.info(_LI("receiver '%(id)s' is updated."), {'id': receiver_id})
+        return receiver.to_dict()
+
+    @request_context
     def receiver_delete(self, context, identity):
         """Delete the specified receiver.
 
