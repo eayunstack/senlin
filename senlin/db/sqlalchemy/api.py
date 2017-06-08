@@ -1137,6 +1137,17 @@ def receiver_get_by_short_id(context, short_id, project_safe=True):
                              project_safe=project_safe)
 
 
+def receiver_update(context, receiver_id, values):
+    with session_for_write() as session:
+        receiver = session.query(models.Receiver).get(receiver_id)
+        if not receiver:
+            raise exception.ResourceNotFound(type='receiver', id=receiver_id)
+
+        receiver.update(values)
+        receiver.save(session)
+        return receiver
+
+
 def receiver_delete(context, receiver_id):
     with session_for_write() as session:
         receiver = session.query(models.Receiver).get(receiver_id)

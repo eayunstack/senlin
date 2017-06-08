@@ -360,6 +360,12 @@ class EngineClient(object):
         return self.call(ctxt, self.make_msg('receiver_get', identity=identity,
                                              project_safe=project_safe))
 
+    def receiver_update(self, ctxt, receiver_id, name, action, params):
+        return self.call(ctxt,
+                         self.make_msg('receiver_update',
+                                       receiver_id=receiver_id, name=name,
+                                       action=action, params=params))
+
     def receiver_delete(self, ctxt, identity, cast=True):
         rpc_method = self.cast if cast else self.call
         return rpc_method(ctxt, self.make_msg('receiver_delete',
