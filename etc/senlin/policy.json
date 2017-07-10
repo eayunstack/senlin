@@ -46,5 +46,6 @@
     "actions:get": "",
     "events:index": "",
     "events:get": "",
-    "webhooks:trigger": ""
+    "webhooks:trigger": "",
+    "services:index": "role:admin"
 }
