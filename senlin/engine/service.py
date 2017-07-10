@@ -120,6 +120,11 @@ class EngineService(service.Service):
         self._rpc_server.start()
         self.service_manage_cleanup()
 
+        # create service record
+        ctx = senlin_context.get_admin_context()
+        service_obj.Service.create(ctx, self.engine_id, self.host,
+                                   'senlin-engine', self.topic)
+
         # create a health manager RPC service for this engine.
         self.health_mgr = health_manager.HealthManager(
             self, self.health_mgr_topic, consts.RPC_API_VERSION)
@@ -127,8 +132,12 @@ class EngineService(service.Service):
         LOG.info(_LI("Starting health manager for engine %s"), self.engine_id)
         self.health_mgr.start()
 
-        self.TG.add_timer(cfg.CONF.periodic_interval,
-                          self.service_manage_report)
+
+        # we may want to make the clean-up attempts configurable.
+        self.cleanup_timer = self.TG.add_timer(2 * CONF.periodic_interval,
+                                               self.service_manage_cleanup)
+
+        self.TG.add_timer(CONF.periodic_interval, self.service_manage_report)
         super(EngineService, self).start()
 
     def _stop_rpc_server(self):
@@ -154,19 +163,15 @@ class EngineService(service.Service):
         self.health_mgr.stop()
 
         self.TG.stop()
+
+        service_obj.Service.delete(self.engine_id)
+        LOG.info(_LI('Engine %s is deleted'), self.engine_id)
+
         super(EngineService, self).stop()
 
     def service_manage_report(self):
         ctx = senlin_context.get_admin_context()
-        try:
-            svc = service_obj.Service.update(ctx, self.engine_id)
-            # if svc is None, means it's not created.
-            if svc is None:
-                service_obj.Service.create(ctx, self.engine_id, self.host,
-                                           'senlin-engine', self.topic)
-        except Exception as ex:
-            LOG.error(_LE('Service %(service_id)s update failed: %(error)s'),
-                      {'service_id': self.engine_id, 'error': ex})
+        service_obj.Service.update(ctx, self.engine_id)
 
     def service_manage_cleanup(self):
         ctx = senlin_context.get_admin_context()
@@ -179,7 +184,11 @@ class EngineService(service.Service):
                 # < time_line:
                 # hasn't been updated, assuming it's died.
                 LOG.info(_LI('Service %s was aborted'), svc['id'])
-                service_obj.Service.delete(ctx, svc['id'])
+
+                LOG.info(_LI('Breaking locks for dead engine %s'), svc['id'])
+                service_obj.Service.gc_by_engine(svc['id'])
+                LOG.info(_LI('Done breaking locks for engine %s'), svc['id'])
+                service_obj.Service.delete(svc['id'])
 
     @request_context
     def credential_create(self, context, cred, attrs=None):

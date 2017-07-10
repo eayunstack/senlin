@@ -80,7 +80,8 @@ class EngineBasicTest(base.SenlinTestCase):
         self.assertEqual(self.fake_rpc_server, self.eng._rpc_server)
         self.fake_rpc_server.start.assert_called_once_with()
 
-    def test_engine_stop(self, mock_msg_cls, mock_hm_cls, mock_disp_cls):
+    def test_engine_stop(self, mock_delete, mock_msg_cls, mock_hm_cls,
+                         mock_disp_cls):
         mock_disp = mock_disp_cls.return_value
         mock_hm = mock_hm_cls.return_value
         self.eng.start()
@@ -92,6 +93,9 @@ class EngineBasicTest(base.SenlinTestCase):
 
         mock_disp.stop.assert_called_once_with()
         mock_hm.stop.assert_called_once_with()
+
+        mock_delete.assert_called_once_with(self.fake_id)
+
 
     def test_engine_stop_with_exception(self, mock_msg_cls, mock_hm_cls,
                                         mock_disp_cls):
@@ -122,22 +126,12 @@ class EngineStatusTest(base.SenlinTestCase):
         self.get_rpc = self.patchobject(rpc_messaging, 'get_rpc_server',
                                         return_value=self.fake_rpc_server)
 
-    @mock.patch.object(service_obj.Service, 'create')
-    @mock.patch.object(service_obj.Service, 'update')
-    def test_service_manage_report_create(self, mock_update, mock_create):
-        mock_update.return_value = None
-
-        self.eng.service_manage_report()
-
-        mock_create.assert_called_once_with(
-            mock.ANY, self.eng.engine_id, self.eng.host, 'senlin-engine',
-            self.eng.topic)
-
     @mock.patch.object(service_obj.Service, 'update')
     def test_service_manage_report_update(self, mock_update):
         mock_update.return_value = mock.Mock()
         self.eng.service_manage_report()
         mock_update.assert_called_once_with(mock.ANY, self.eng.engine_id)
+
 
     @mock.patch.object(service_obj.Service, 'update')
     def test_service_manage_report_error(self, mock_update):
@@ -147,11 +141,14 @@ class EngineStatusTest(base.SenlinTestCase):
         expect_str = 'Service %s update failed' % self.eng.engine_id
         self.assertIn(expect_str, self.LOG.output)
 
+
+    @mock.patch.object(service_obj.Service, 'gc_by_engine')
     @mock.patch.object(service_obj.Service, 'get_all')
     @mock.patch.object(service_obj.Service, 'delete')
-    def test_service_manage_report_cleanup(self, mock_delete, mock_get_all):
+    def test_service_manage_report_cleanup(self, mock_delete, mock_get_all, mock_gc):
         delta = datetime.timedelta(seconds=2 * cfg.CONF.periodic_interval)
         ages_a_go = timeutils.utcnow(True) - delta
         mock_get_all.return_value = [{'id': 'foo', 'updated_at': ages_a_go}]
-        self.eng.service_manage_cleanup()
-        mock_delete.assert_called_once_with(mock.ANY, 'foo')
+        self.eng._service_manage_cleanup()
+        mock_delete.assert_called_once_with('foo')
+        mock_gc.assert_called_once_with('foo')
