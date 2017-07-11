@@ -419,7 +419,6 @@ class ClusterAction(base.Action):
         :returns: A tuple containing the result and the corresponding reason.
         """
         # Use policy decision if any, or fall back to defaults
-        destroy_after_deletion = False
         grace_period = 0
         reduce_desired_capacity = True
         pd = self.data.get('deletion', None)
@@ -427,6 +426,10 @@ class ClusterAction(base.Action):
             destroy_after_deletion = pd.get('destroy_after_deletion', False)
             grace_period = pd.get('grace_period', 0)
             reduce_desired_capacity = pd.get('reduce_desired_capacity', True)
+
+        # ensure cluster node delete always not permanently
+        # deleting nodes in a cluster
+        destroy_after_deletion = False
 
         data = {
             'deletion': {
