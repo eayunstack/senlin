@@ -19,6 +19,7 @@ from oslo_config import cfg
 from oslo_i18n import _lazy
 from oslo_log import log as logging
 from oslo_service import service
+from oslo_concurrency import processutils
 
 from senlin.common import consts
 from senlin.common import messaging
@@ -38,6 +39,8 @@ def main():
     from senlin.engine import service as engine
 
     srv = engine.EngineService(cfg.CONF.host, consts.ENGINE_TOPIC)
+    if cfg.CONF.num_engine_workers <= 1:
+        cfg.CONF.num_engine_workers = processutils.get_worker_count()
     launcher = service.launch(cfg.CONF, srv,
                               workers=cfg.CONF.num_engine_workers)
     # the following periodic tasks are intended serve as HA checking
