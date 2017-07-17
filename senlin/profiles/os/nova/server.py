@@ -336,6 +336,23 @@ class ServerProfile(base.Profile):
             else:
                 raise
 
+    def _validate_segroup(self, obj, name_or_id, reason=None):
+        try:
+            return self.network(obj).security_group_find(name_or_id)
+        except exc.InternalError as ex:
+            if reason == 'create':
+                raise exc.EResourceCreation(type='server',
+                                            message=six.text_type(ex))
+            elif reason == 'update':
+                raise exc.EResourceUpdate(type='server', id=obj.physical_id,
+                                          message=six.text_type(ex))
+            elif ex.code == 404:
+                msg = _("The specified %(k)s '%(v)s' could not be found."
+                        ) % {'k': self.SECURITY_GROUPS, 'v': name_or_id}
+                raise exc.InvalidSpec(message=msg)
+            else:
+                raise exc.InvalidSpec(message=six.text_type(ex))
+
     def do_validate(self, obj):
         """Validate if the spec has provided valid info for server creation.
 
@@ -522,21 +539,22 @@ class ServerProfile(base.Profile):
                 net = self._validate_network(obj, net_spec, 'create')
                 if 'float_ip' in net:
                     float_ip = net.pop('float_ip')
-                port_id.append(net['port'])
+                if 'port' in net:
+                    port_id.append(net['port'])
                 kwargs['networks'].append(net)
 
         secgroups = self.properties[self.SECURITY_GROUPS]
         if secgroups:
+            for seg in secgroups:
+                self._validate_segroup(obj, seg, 'create')
+
             # nova boot instance default use default security group,
             # so must boot configure security group
             kwargs['security_groups'] = [{'name': sg} for sg in secgroups]
             # nova boot security group passing parameters not to take effect,
             # so must use port_update update security_group
             for port in port_id:
-                try:
-                    self.network(obj).port_update(port, secgroups)
-                except exc.InternalError as ex:
-                    raise exc.Error(msg=ex)
+                self._update_port_secgroup(obj, port, secgroups)
 
         if 'placement' in obj.data:
             if 'zone' in obj.data['placement']:
@@ -548,23 +566,20 @@ class ServerProfile(base.Profile):
                 hints.update({'group': group_id})
                 kwargs['scheduler_hints'] = hints
 
+        server = None
+        resource_id = None
         try:
             server = self.compute(obj).server_create(**kwargs)
             self.compute(obj).wait_for_server(server.id)
+            if float_ip:
+                self.compute(obj).server_floatingip_associate(server.id,
+                                                              float_ip)
+            return server.id
         except exc.InternalError as ex:
             if server and server.id:
                 resource_id = server.id
             raise exc.EResourceCreation(type='server', message=ex.message,
                                         resource_id=resource_id)
-
-        # server floating ip associate
-        if float_ip:
-            try:
-                self.compute(obj).server_floatingip_associate(server.id,
-                                                              float_ip)
-            except exc.InternalError as ex:
-                raise exc.EResourceCreation(type='server', message=ex.message)
-        return server.id
 
     def do_delete(self, obj, **params):
         """Delete the physical resource associated with the specified node.
@@ -890,6 +905,22 @@ class ServerProfile(base.Profile):
         if networks_create:
             self._create_interfaces(obj, networks_create)
         return
+
+    def _update_port_secgroup(self, obj, port, secgroups, reason='update'):
+        """Updating server port security group
+        :param obj: the server to operate on
+        :param port: the instance fix ip bind port
+        :param secgroups: the instace security group
+        :returns: error if the operation appear error
+        """
+        try:
+            self.network(obj).port_update(port, secgroups)
+        except exc.InternalError as ex:
+            if reason == 'update':
+                raise exc.EResourceUpdate(type='server', id=obj.physical_id,
+                                          message=six.text_type(ex))
+            else:
+                raise exc.InvalidSpec(message=six.text_type(ex))
 
     def do_update(self, obj, new_profile=None, **params):
         """Perform update on the server.
