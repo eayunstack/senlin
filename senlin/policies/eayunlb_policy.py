@@ -116,7 +116,7 @@ class LoadBalancingPolicy(base.Policy):
         name_or_id = self.pool_spec.get(self.POOL_ID)
         if name_or_id:
             try:
-                nc.pool_get(name_or_id)
+                nc.pool_get_v1(name_or_id)
             except exc.InternalError:
                 msg = _("The specified %(key)s '%(value)s' could not be found."
                         ) % {'key': self.POOL_ID, 'value': name_or_id}
