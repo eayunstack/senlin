@@ -77,8 +77,9 @@ class ClusterData(object):
                     "equal to its desired capacity.")
             raise exc.HTTPBadRequest(msg)
 
-        if self.max_size is not None and self.max_size >= 0:
-            if self.max_size < self.desired_capacity:
+        if self.max_size is not None:
+            if (self.max_size >= 0 and self.max_size < self.desired_capacity)\
+                    or (self.max_size < -1):
                 msg = _("Cluster max_size, if specified, must be greater than "
                         "or equal to its desired capacity. Setting max_size "
                         "to -1 means no upper limit on cluster size.")
