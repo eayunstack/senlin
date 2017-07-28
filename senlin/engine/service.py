@@ -913,18 +913,22 @@ class EngineService(service.Service):
                 raise exception.ProfileTypeNotMatch(message=msg)
             if old_profile.id != new_profile.id:
                 inputs['new_profile_id'] = new_profile.id
+                cluster.profile_id = new_profile.id
 
         if metadata is not None and metadata != cluster.metadata:
             inputs['metadata'] = metadata
+            cluster.metadata = metadata
 
         if timeout is not None:
             timeout = utils.parse_int_param(consts.CLUSTER_TIMEOUT, timeout)
             inputs['timeout'] = timeout
+            cluster.timeout = timeout
 
         inputs['profile_only'] = profile_only
 
         if name is not None:
             inputs['name'] = name
+            cluster.name = name
 
         if not inputs:
             msg = _("No property needs an update.")
