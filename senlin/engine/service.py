@@ -132,7 +132,6 @@ class EngineService(service.Service):
         LOG.info(_LI("Starting health manager for engine %s"), self.engine_id)
         self.health_mgr.start()
 
-
         # we may want to make the clean-up attempts configurable.
         self.cleanup_timer = self.TG.add_timer(2 * CONF.periodic_interval,
                                                self.service_manage_cleanup)
@@ -1022,7 +1021,16 @@ class EngineService(service.Service):
         bad_nodes = []
         owned_nodes = []
         not_match_nodes = []
+        error = None
         for node in nodes:
+            # Cluster add node before must node status check
+            db_node = self.node_find(context, node)
+            Node = node_mod.Node.load(context, db_node=db_node)
+            if not Node.do_check(context):
+                error = _("The node %s check faild" % db_node)
+                LOG.error(error)
+                raise exception.BadRequest(msg=error)
+
             try:
                 db_node = self.node_find(context, node)
                 # Skip node in the same cluster already
@@ -1043,7 +1051,6 @@ class EngineService(service.Service):
                 not_found.append(node)
                 pass
 
-        error = None
         if len(not_match_nodes) > 0:
             error = _("Profile type of nodes %s does not match that of the "
                       "cluster.") % not_match_nodes
