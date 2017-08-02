@@ -67,6 +67,7 @@ class NodeAction(base.Action):
                 cluster, cluster.desired_capacity + 1, None, None, True)
 
             if result:
+                self.node.set_status(self.context, self.RES_ERROR, params={})
                 return self.RES_ERROR, result
             # Update cluster desired_capacity if node is already in db.
             cluster.desired_capacity += 1
