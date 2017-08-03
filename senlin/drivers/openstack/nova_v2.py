@@ -12,6 +12,7 @@
 
 from oslo_config import cfg
 from oslo_log import log
+from openstack import exceptions
 
 from senlin.common.i18n import _LW
 from senlin.drivers import base
@@ -116,9 +117,14 @@ class NovaClient(base.DriverBase):
 
     @sdk.translate_exception
     def server_force_delete(self, server, ignore_missing=True):
-        return self.conn.compute.delete_server(server,
-                                               ignore_missing=ignore_missing,
-                                               force=True)
+        try:
+            sv = self.conn.compute.delete_server(server,
+                                                 ignore_missing=ignore_missing,
+                                                 force=True)
+            return sv
+        except exceptions.NotFoundException:
+            LOG.warning(_LW("No server with a name or ID of %s exists."
+                          % (server)))
 
     @sdk.translate_exception
     def server_rebuild(self, server, image, name=None, admin_password=None,
