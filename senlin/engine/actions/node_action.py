@@ -113,6 +113,9 @@ class NodeAction(base.Action):
 
         res = self.node.do_delete(self.context)
         if res:
+            cluster.status_reason = ("Node %s: Deletion succeeded"
+                                     % self.node.name)
+            cluster.store(self.context)
             return self.RES_OK, _('Node deleted successfully.')
         else:
             return self.RES_ERROR, _('Node deletion failed.')
