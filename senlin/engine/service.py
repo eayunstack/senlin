@@ -2440,7 +2440,7 @@ class EngineService(service.Service):
             receiver.params = params
             changed = True
         if changed:
-            receiver.store(context)
+            receiver.store(context, update=True)
         else:
             msg = _("No property needs an update.")
             raise exception.BadRequest(msg=msg)
