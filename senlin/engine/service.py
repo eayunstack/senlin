@@ -1912,7 +1912,7 @@ class EngineService(service.Service):
             raise exception.ActionForbidden(message=msg)
 
         elif db_node.status not in [node_mod.Node.PROTECTED]:
-            v = {'id': identity, 'status': db_node.status}
+            v = {'id': identity, 'status': "PROTECT"}
             msg = _('Remove protect failed because node %(id)s is not in '
                     '%(status)s status.' % v)
             raise exception.ActionForbidden(message=msg)
