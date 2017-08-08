@@ -1401,6 +1401,10 @@ class EngineService(service.Service):
         LOG.info(_LI("Checking Cluster '%(cluster)s'."),
                  {'cluster': identity})
         db_cluster = self.cluster_find(context, identity)
+        # cluster check don't able to check has exist suspend cluster
+        if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
+            raise exception.ForbiddenAction(type='cluster', id=identity,
+                                            status=db_cluster.status)
         if not context.user or not context.project:
             context.user = db_cluster.user
             context.project = db_cluster.project
