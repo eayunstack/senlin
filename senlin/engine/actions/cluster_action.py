@@ -70,6 +70,7 @@ class ClusterAction(base.Action):
 
         try:
             self.cluster = cluster_mod.Cluster.load(self.context, self.target)
+            self.timeout = self.cluster.timeout
         except Exception:
             self.cluster = None
 
