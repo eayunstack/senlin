@@ -194,7 +194,7 @@ class NodeAction(base.Action):
         """
         # Check the size constraint of parent cluster
         cluster = cm.Cluster.load(self.context, self.node.cluster_id)
-        new_capacity = cluster.desired_capacity - 1
+        new_capacity = cluster.desired_capacity
         result = scaleutils.check_size_params(cluster, new_capacity,
                                               None, None, True)
         if result:
