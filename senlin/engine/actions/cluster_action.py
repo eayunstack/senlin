@@ -703,7 +703,12 @@ class ClusterAction(base.Action):
         # Choose victims randomly
         if len(candidates) == 0:
             candidates = scaleutils.nodes_by_random(self.cluster.nodes, count)
-
+        if len(candidates) == 0:
+            reason = _('Cluster scaling faild')
+            self.cluster.set_status(self.context, self.cluster.WARNING,
+                                    _('Cluster scale in not found node.'),
+                                    desired_capacity=curr_size)
+            return self.RES_ERROR, reason
         self._sleep(grace_period)
 
         result, reason = self._delete_nodes(candidates)
