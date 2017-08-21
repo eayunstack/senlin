@@ -12,6 +12,7 @@
 
 import eventlet
 
+from senlin.common import exception
 from senlin.common.i18n import _
 from senlin.common import scaleutils
 from senlin.engine.actions import base
@@ -89,6 +90,10 @@ class NodeAction(base.Action):
             # If node belongs to a cluster, check size constraint
             # before deleting it
             cluster = cm.Cluster.load(self.context, self.node.cluster_id)
+            if cluster.status == cm.Cluster.SUSPEND:
+                msg = _('Deleting nodes error, the cluster in %s state'
+                        % cluster.status)
+                raise exception.FeatureNotSupported(feature=msg)
             result = scaleutils.check_size_params(cluster,
                                                   cluster.desired_capacity - 1,
                                                   None, None, True)
@@ -126,6 +131,10 @@ class NodeAction(base.Action):
             # If node belongs to a cluster, check size constraint
             # before deleting it
             cluster = cm.Cluster.load(self.context, self.node.cluster_id)
+            if cluster.status == cm.Cluster.SUSPEND:
+                msg = _('Remove nodes error, the cluster in %s state'
+                        % cluster.status)
+                raise exception.FeatureNotSupported(feature=msg)
             result = scaleutils.check_size_params(cluster,
                                                   cluster.desired_capacity - 1,
                                                   None, None, True)
