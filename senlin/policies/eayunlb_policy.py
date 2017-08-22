@@ -154,7 +154,8 @@ class LoadBalancingPolicy(base.Policy):
                 # TODO(anyone): May need to "roll-back" changes caused by any
                 # successful member_add() calls.
                 lb_driver.lb_delete(**data)
-                return False, 'Failed in adding node into lb pool'
+                return False, ("The cluster node %s don't add in to %s pool"
+                               % (node.name, data['pool_id']))
 
             node.data.update({'lb_member': member_id})
             node.store(oslo_context.get_current())
