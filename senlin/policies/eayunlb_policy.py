@@ -57,6 +57,7 @@ class LoadBalancingPolicy(base.Policy):
         ('BEFORE', consts.CLUSTER_SCALE_IN),
         ('BEFORE', consts.CLUSTER_RESIZE),
         ('BEFORE', consts.NODE_DELETE),
+        ('BEFORE', consts.NODE_REMOVE),
     ]
 
     PROFILE_TYPE = [
