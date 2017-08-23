@@ -124,7 +124,7 @@ class NovaClient(base.DriverBase):
             return sv
         except exceptions.NotFoundException:
             LOG.warning(_LW("No server with a name or ID of %s exists."
-                          % (server)))
+                            % (server)))
 
     @sdk.translate_exception
     def server_rebuild(self, server, image, name=None, admin_password=None,
@@ -321,3 +321,7 @@ class NovaClient(base.DriverBase):
         return self.conn.compute.delete_volume_attachment(
             volume_id, server, ignore_missing=ignore_missing
         )
+
+    @sdk.translate_exception
+    def server_state_reset(self, server, state=None):
+        return self.conn.compute.reset_server_state(server, state)
