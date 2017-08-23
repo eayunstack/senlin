@@ -270,6 +270,8 @@ class String(PropertySchema):
 
     def resolve(self, value):
         try:
+            if isinstance(value, unicode):
+                return value.encode('utf-8')
             return str(value)
         except (TypeError, ValueError):
             raise
