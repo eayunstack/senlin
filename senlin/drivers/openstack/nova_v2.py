@@ -321,3 +321,7 @@ class NovaClient(base.DriverBase):
         return self.conn.compute.delete_volume_attachment(
             volume_id, server, ignore_missing=ignore_missing
         )
+
+    @sdk.translate_exception
+    def server_state_reset(self, server, state=None):
+        return self.conn.compute.reset_server_state(server, state)
