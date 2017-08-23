@@ -124,7 +124,7 @@ class NovaClient(base.DriverBase):
             return sv
         except exceptions.NotFoundException:
             LOG.warning(_LW("No server with a name or ID of %s exists."
-                          % (server)))
+                            % (server)))
 
     @sdk.translate_exception
     def server_rebuild(self, server, image, name=None, admin_password=None,
