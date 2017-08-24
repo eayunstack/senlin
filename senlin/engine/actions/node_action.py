@@ -143,17 +143,20 @@ class NodeAction(base.Action):
                 grace_period = pd.get('grace_period', 0)
                 if grace_period:
                     eventlet.sleep(grace_period)
+        res = self.node.do_remove(self.context)
+        if self.node.cluster_id and self.cause == base.CAUSE_RPC:
             # check if desired_capacity should be changed
             do_reduce = True
+            params = {}
             pd = self.data.get('deletion', None)
+            desired = cluster.desired_capacity - 1
             if pd:
                 do_reduce = pd.get('reduce_desired_capacity', True)
-            if do_reduce:
-                cluster.desired_capacity -= 1
-                cluster.store(self.context)
+            if do_reduce and res:
+                params = {'desired_capacity': desired}
+            cluster.eval_status(self.context, consts.NODE_REMOVE, **params)
             cluster.remove_node(self.node.id)
 
-        res = self.node.do_remove(self.context)
         if res:
             return self.RES_OK, _('Node remove successfully.')
         else:
