@@ -14,6 +14,7 @@ import eventlet
 
 from senlin.common.i18n import _
 from senlin.common import scaleutils
+from senlin.common import consts
 from senlin.engine.actions import base
 from senlin.engine import cluster as cm
 from senlin.engine import event as EVENT
@@ -101,21 +102,22 @@ class NodeAction(base.Action):
                 grace_period = pd.get('grace_period', 0)
                 if grace_period:
                     eventlet.sleep(grace_period)
+        res = self.node.do_delete(self.context)
+
+        if self.node.cluster_id and self.cause == base.CAUSE_RPC:
             # check if desired_capacity should be changed
             do_reduce = True
+            params = {}
             pd = self.data.get('deletion', None)
+            desired = cluster.desired_capacity - 1
             if pd:
                 do_reduce = pd.get('reduce_desired_capacity', True)
-            if do_reduce:
-                cluster.desired_capacity -= 1
-                cluster.store(self.context)
+            if do_reduce and res:
+                params = {'desired_capacity': desired}
+            cluster.eval_status(self.context, consts.NODE_DELETE, **params)
             cluster.remove_node(self.node.id)
 
-        res = self.node.do_delete(self.context)
         if res:
-            cluster.status_reason = ("Node %s: Deletion succeeded"
-                                     % self.node.name)
-            cluster.store(self.context)
             return self.RES_OK, _('Node deleted successfully.')
         else:
             return self.RES_ERROR, _('Node deletion failed.')
