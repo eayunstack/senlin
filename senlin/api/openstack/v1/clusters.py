@@ -78,11 +78,14 @@ class ClusterData(object):
             raise exc.HTTPBadRequest(msg)
 
         if self.max_size is not None:
-            if (self.max_size >= 0 and self.max_size < self.desired_capacity)\
+            if (self.max_size > 0 and self.max_size < self.desired_capacity)\
                     or (self.max_size < -1):
                 msg = _("Cluster max_size, if specified, must be greater than "
                         "or equal to its desired capacity. Setting max_size "
                         "to -1 means no upper limit on cluster size.")
+                raise exc.HTTPBadRequest(msg)
+            elif self.max_size == 0:
+                msg = _("Cluster don't allow max_size equal to 0")
                 raise exc.HTTPBadRequest(msg)
 
     def validate_for_update(self):
