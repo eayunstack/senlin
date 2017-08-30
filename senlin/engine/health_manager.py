@@ -287,7 +287,8 @@ class HealthManager(service.Service):
                          "health monitoring"),
                      {'c': r.cluster_id, 'e': r.enabled})
 
-            entry = self._start_check(entry)
+            if r.enabled:
+                entry = self._start_check(entry)
             if entry:
                 self.rt['registries'].append(entry)
 
@@ -337,8 +338,9 @@ class HealthManager(service.Service):
             'params': registry.params,
             'enabled': registry.enabled
         }
+        if registry.enabled:
+            self._start_check(entry)
 
-        self._start_check(entry)
         self.rt['registries'].append(entry)
 
     def unregister_cluster(self, ctx, cluster_id):
