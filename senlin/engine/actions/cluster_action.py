@@ -486,6 +486,10 @@ class ClusterAction(base.Action):
         reason = _('Cluster checking completed.')
         for node in self.cluster.nodes:
             node_id = node.id
+            if node.status == node_mod.Node.PROTECTED:
+                LOG.warning("Node: %s in %s, Con't complete check."
+                            % (node_id[:8], node.status))
+                continue
             action_id = base.Action.create(
                 self.context, node_id, consts.NODE_CHECK,
                 name='node_check_%s' % node_id[:8],
@@ -530,6 +534,11 @@ class ClusterAction(base.Action):
         for node in self.cluster.nodes:
             if node.status == 'ACTIVE':
                 continue
+            elif node.status == node_mod.Node.PROTECTED:
+                LOG.warning("Node: %s in %s, Con't complete recover."
+                            % (node.id[:8], node.status))
+                continue
+
             node_id = node.id
             action_id = base.Action.create(
                 self.context, node_id, consts.NODE_RECOVER,
@@ -695,8 +704,12 @@ class ClusterAction(base.Action):
         # Choose victims randomly
         if len(candidates) == 0:
             candidates = scaleutils.nodes_by_random(self.cluster.nodes, count)
-
-        #
+        if len(candidates) == 0:
+            reason = _('Cluster scaling faild')
+            self.cluster.set_status(self.context, self.cluster.WARNING,
+                                    _('Cluster scale in not found node.'),
+                                    desired_capacity=curr_size)
+            return self.RES_ERROR, reason
         self._sleep(grace_period)
 
         result, reason = self._delete_nodes(candidates)

@@ -1695,6 +1695,11 @@ class EngineService(service.Service):
         LOG.info(_LI("Updating node '%s'."), identity)
 
         db_node = self.node_find(context, identity)
+        if db_node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Update failed because node %(id)s is in %(status)s '
+                    'status.' % v)
+            raise exception.ActionForbidden(message=msg)
 
         if profile_id:
             try:
@@ -1802,6 +1807,11 @@ class EngineService(service.Service):
                            node_mod.Node.DELETING, node_mod.Node.RECOVERING]:
             raise exception.ActionInProgress(type='node', id=identity,
                                              status=node.status)
+        elif node.status in [node_mod.Node.PROTECTED]:
+            v = {'id': identity, 'status': node.status}
+            msg = _('Remove failed because node %(id)s is in %(status)s '
+                    'status.' % v)
+            raise exception.ActionForbidden(message=msg)
 
         containers = node.dependents.get('containers', None)
         if containers is not None and len(containers) > 0:
@@ -1909,13 +1919,7 @@ class EngineService(service.Service):
 
         db_node = self.node_find(context, identity)
 
-        if db_node.cluster_id == '':
-            v = {'id': identity}
-            msg = _('Remove protect failed because node %(id)s have not join '
-                    'a cluster.' % v)
-            raise exception.ActionForbidden(message=msg)
-
-        elif db_node.status not in [node_mod.Node.PROTECTED]:
+        if db_node.status not in [node_mod.Node.PROTECTED]:
             v = {'id': identity, 'status': "PROTECT"}
             msg = _('Remove protect failed because node %(id)s is not in '
                     '%(status)s status.' % v)
@@ -1957,7 +1961,7 @@ class EngineService(service.Service):
 
         elif db_node.status in [node_mod.Node.PROTECTED]:
             v = {'id': identity, 'status': db_node.status}
-            msg = _('Set protect failed because node %(id)s is in %(status)s '
+            msg = _('Recover failed because node %(id)s is in %(status)s '
                     'status' % v)
             raise exception.ActionForbidden(message=msg)
 

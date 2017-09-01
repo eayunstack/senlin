@@ -274,6 +274,10 @@ class Node(object):
         if not self.physical_id:
             no.Node.delete(context, self.id)
             return True
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete delete."
+                        % (self.id[:8], self.status))
+            return False
 
         # TODO(Qiming): check if actions are working on it and can be canceled
         self.set_status(context, self.DELETING, 'Deletion in progress')
@@ -312,6 +316,10 @@ class Node(object):
                             like 'new_profile_id', 'name', 'role', 'metadata'.
         """
         if not self.physical_id:
+            return False
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete update."
+                        % (self.id[:8], self.status))
             return False
 
         self.set_status(context, self.UPDATING, 'Update in progress')
@@ -367,6 +375,11 @@ class Node(object):
         if self.cluster_id == '':
             return True
 
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete leave."
+                        % (self.id[:8], self.status))
+            return False
+
         res = pb.Profile.leave_cluster(context, self)
         if res:
             timestamp = timeutils.utcnow(True)
@@ -381,9 +394,6 @@ class Node(object):
     def do_check(self, context):
         if not self.physical_id:
             return False
-
-        if self.status == self.PROTECTED:
-            return True
 
         try:
             res = pb.Profile.check_object(context, self)
