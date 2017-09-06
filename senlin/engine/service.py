@@ -890,9 +890,9 @@ class EngineService(service.Service):
         # Get the database representation of the existing cluster
         db_cluster = self.cluster_find(context, identity)
         cluster = cluster_mod.Cluster.load(context, dbcluster=db_cluster)
-        if cluster.status == cluster.ERROR:
-            msg = _('Updating a cluster in error state')
-            LOG.error(msg)
+        if cluster.status in [cluster.ERROR, cluster.SUSPEND]:
+            msg = _('Updating error, the cluster in %s state'
+                    % cluster.status)
             raise exception.FeatureNotSupported(feature=msg)
 
         LOG.info(_LI("Updating cluster '%s'."), identity)
@@ -967,6 +967,10 @@ class EngineService(service.Service):
                               cluster_mod.Cluster.RECOVERING]:
             raise exception.ActionInProgress(type='cluster', id=identity,
                                              status=cluster.status)
+        if cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Deleting error, the cluster in %s state'
+                    % cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         containers = cluster.dependents.get('containers', None)
         if containers is not None and len(containers) > 0:
@@ -1014,8 +1018,12 @@ class EngineService(service.Service):
         """
         LOG.info(_LI("Adding nodes '%(nodes)s' to cluster '%(cluster)s'."),
                  {'cluster': identity, 'nodes': nodes})
-
         db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Add nodes error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
+
         db_cluster_profile = self.profile_find(context,
                                                db_cluster.profile_id)
         cluster_profile_type = db_cluster_profile.type
@@ -1107,6 +1115,10 @@ class EngineService(service.Service):
         LOG.info(_LI("Deleting nodes '%(nodes)s' from cluster '%(cluster)s'."),
                  {'cluster': identity, 'nodes': nodes})
         db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Del nodes error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
         found = []
         not_found = []
         bad_nodes = []
@@ -1186,6 +1198,12 @@ class EngineService(service.Service):
         :return: A dict containing the ID of an action fired.
         """
 
+        db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Resize error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
+
         # check adj_type
         if adj_type is not None:
             if adj_type not in consts.ADJUSTMENT_TYPES:
@@ -1224,7 +1242,6 @@ class EngineService(service.Service):
         if strict is not None:
             strict = utils.parse_bool_param(consts.ADJUSTMENT_STRICT, strict)
 
-        db_cluster = self.cluster_find(context, identity)
         current = db_cluster.desired_capacity
         if adj_type is not None:
             desired = su.calculate_desired(current, adj_type, number, min_step)
@@ -1282,8 +1299,9 @@ class EngineService(service.Service):
         db_cluster = self.cluster_find(context, identity)
 
         if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
-            raise exception.ForbiddenAction(type='cluster', id=identity,
-                                            status=db_cluster.status)
+            msg = _('Scale out error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         if count is not None:
             count = utils.parse_int_param('count', count, allow_zero=False)
@@ -1329,8 +1347,9 @@ class EngineService(service.Service):
         db_cluster = self.cluster_find(context, identity)
 
         if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
-            raise exception.ForbiddenAction(type='cluster', id=identity,
-                                            status=db_cluster.status)
+            msg = _('Scale in error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         if count is not None:
             count = utils.parse_int_param('count', count, allow_zero=False)
@@ -1403,8 +1422,10 @@ class EngineService(service.Service):
         db_cluster = self.cluster_find(context, identity)
         # cluster check don't able to check has exist suspend cluster
         if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
-            raise exception.ForbiddenAction(type='cluster', id=identity,
-                                            status=db_cluster.status)
+            msg = _('Checking error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
+
         if not context.user or not context.project:
             context.user = db_cluster.user
             context.project = db_cluster.project
@@ -1433,6 +1454,10 @@ class EngineService(service.Service):
         """
         LOG.info(_LI("Recovering cluster '%s'."), identity)
         db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Recover error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         params = {
             'name': 'cluster_recover_%s' % db_cluster.id[:8],
@@ -1461,8 +1486,9 @@ class EngineService(service.Service):
         db_cluster = self.cluster_find(context, identity)
 
         if db_cluster.status in [cluster_mod.Cluster.SUSPEND]:
-            raise exception.ForbiddenAction(type='cluster', id=identity,
-                                            status=db_cluster.status)
+            msg = _('Suspend error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         params = {
             'name': 'cluster_stop_%s' % db_cluster.id[:8],
@@ -1491,8 +1517,9 @@ class EngineService(service.Service):
         db_cluster = self.cluster_find(context, identity)
 
         if db_cluster.status not in [cluster_mod.Cluster.SUSPEND]:
-            raise exception.ForbiddenAction(type='cluster', id=identity,
-                                            status=db_cluster.status)
+            msg = _('Resume error, the cluster in %s state'
+                    % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
 
         params = {
             'name': 'cluster_resume_%s' % db_cluster.id[:8],
@@ -2037,6 +2064,10 @@ class EngineService(service.Service):
                  {'policy': policy, 'cluster': identity})
 
         db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Attaching policy error, the cluster in '
+                    '%s state' % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
         try:
             db_policy = self.policy_find(context, policy)
         except exception.ResourceNotFound as ex:
@@ -2076,6 +2107,10 @@ class EngineService(service.Service):
                  {'policy': policy, 'cluster': identity})
 
         db_cluster = self.cluster_find(context, identity)
+        if db_cluster.status == cluster_mod.Cluster.SUSPEND:
+            msg = _('Detaching policy error, the cluster in '
+                    '%s state' % db_cluster.status)
+            raise exception.FeatureNotSupported(feature=msg)
         try:
             db_policy = self.policy_find(context, policy)
         except exception.ResourceNotFound as ex:
