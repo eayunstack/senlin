@@ -618,6 +618,10 @@ class ServerProfile(base.Profile):
         keys = params.get('keys', None)
         try:
             driver = self.compute(obj)
+            server = driver.server_get(server_id)
+            server_status = server.status
+            if server_status != "ACTIVE":
+                driver.server_state_reset(server_id, 'active')
             driver.server_metadata_delete(server_id, keys)
             return True
         except exc.InternalError as ex:
