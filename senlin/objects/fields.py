@@ -25,7 +25,7 @@ from senlin.common.i18n import _
 CONF = cfg.CONF
 
 # Field alias for code readability
-FlexibleBooleanField = fields.FlexibleBooleanField
+BooleanField = fields.BooleanField
 StringField = fields.StringField
 IntegerField = fields.IntegerField
 FloatField = fields.FloatField
@@ -375,7 +375,7 @@ class AdjustmentType(BaseEnum):
 
 class ClusterActionName(BaseEnum):
 
-    ALL = consts.CLUSTER_ACTION_NAMES
+    ALL = consts.ACTION_NAMES
 
 
 class ClusterStatus(BaseEnum):
