@@ -600,6 +600,9 @@ class ServerProfile(base.Profile):
 
         try:
             driver = self.compute(obj)
+            server = driver.server_get(server_id)
+            if server.status != "ACTIVE":
+                driver.server_state_reset(server_id, 'active')
             if force:
                 driver.server_force_delete(server_id, ignore_missing)
             else:
@@ -1068,8 +1071,16 @@ class ServerProfile(base.Profile):
             return False
 
         keys = ['cluster_id', 'cluster_node_index']
-        self.compute(obj).server_metadata_delete(obj.physical_id, keys)
-        return super(ServerProfile, self).do_leave(obj)
+        try:
+            driver = self.compute(obj)
+            server = driver.server_get(obj.physical_id)
+            if server.status != "ACTIVE":
+                driver.server_state_reset(obj.physical_id, 'active')
+            self.compute(obj).server_metadata_delete(obj.physical_id, keys)
+            return super(ServerProfile, self).do_leave(obj)
+        except exc.InternalError as ex:
+            raise exc.EResourceDeletion(type='server', id=obj.physical_id,
+                                        message=six.text_type(ex))
 
     def do_rebuild(self, obj):
         if not obj.physical_id:
