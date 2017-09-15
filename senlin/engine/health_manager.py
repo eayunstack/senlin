@@ -197,9 +197,10 @@ class HealthManager(service.Service):
             return _chase_up(start_time, timeout)
 
         # loop through nodes to trigger recovery
+        health_status = ['ACTIVE', 'PROTECTED']
         nodes = objects.Node.get_all_by_cluster(ctx, cluster_id)
         for node in nodes:
-            if node.status != 'ACTIVE':
+            if node.status not in health_status:
                 LOG.info("Requesting node recovery: %s", node.id)
                 ctx = context.get_service_context(user=node.user,
                                                   project=node.project)
