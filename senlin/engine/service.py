@@ -1039,7 +1039,7 @@ class EngineService(service.Service):
             db_node = self.node_find(context, node)
             Node = node_mod.Node.load(context, db_node=db_node)
             if not Node.do_check(context):
-                error = _("The node %s check faild" % db_node)
+                error = _("The node %s check faild" % db_node.name)
                 LOG.error(error)
                 raise exception.BadRequest(msg=error)
 
