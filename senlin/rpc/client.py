@@ -292,6 +292,11 @@ class EngineClient(object):
                                              identity=identity,
                                              params=params))
 
+    def node_reset_state(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_reset_state',
+                                             identity=identity,
+                                             params=params))
+
     def node_recover(self, ctxt, identity, params=None):
         return self.call(ctxt, self.make_msg('node_recover',
                                              identity=identity,

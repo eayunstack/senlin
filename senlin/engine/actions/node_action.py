@@ -256,6 +256,16 @@ class NodeAction(base.Action):
 
         return result, reason
 
+    def do_reset_state(self):
+        """Handler for the NODE_RESET_STATE action.
+
+        :returns: A tuple containing the result and the corresponding reason.
+        """
+        res, reason = self.node.do_reset_state(self.context)
+        result = self.RES_OK if res else self.RES_ERROR
+
+        return result, reason
+
     def do_recover(self):
         """Handler for the NODE_RECOVER action.
 

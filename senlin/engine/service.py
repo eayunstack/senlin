@@ -1967,6 +1967,39 @@ class EngineService(service.Service):
         return {'action': action_id}
 
     @request_context
+    def node_reset_state(self, context, identity, params=None):
+        """Reset state the node status of specified node.
+
+        :param context: An instance of the request context.
+        :param identity: The UUID, name or short-id of the node.
+        :param params: An dictionary providing additional input parameters
+                       for the checking operation.
+        :return: A dictionary containing the ID of the action triggered by
+                 this request.
+        """
+        LOG.info(_LI("Reset '%s' node state."), identity)
+        db_node = self.node_find(context, identity)
+        if db_node.status == node_mod.Node.ERROR:
+            v = {'id': identity, 'status': db_node.status}
+            msg = _('Reset state failed because node %(id)s is in '
+                    '%(status)s status.' % v)
+            raise exception.ActionForbidden(message=msg)
+
+        kwargs = {
+            'name': 'node_reset_state_%s' % db_node.id[:8],
+            'cause': action_mod.CAUSE_RPC,
+            'status': action_mod.Action.READY,
+            'inputs': params,
+        }
+        action_id = action_mod.Action.create(context, db_node.id,
+                                             consts.NODE_RESET_STATE,
+                                             **kwargs)
+        dispatcher.start_action()
+        LOG.info(_LI("Node reset state action is queued: %s."), action_id)
+
+        return {'action': action_id}
+
+    @request_context
     def node_recover(self, context, identity, params=None):
         """Recover the specified node.
 
