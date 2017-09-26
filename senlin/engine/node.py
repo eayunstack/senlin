@@ -392,8 +392,8 @@ class Node(object):
             return False
 
     def do_check(self, context):
-        if not self.physical_id:
-            return False
+        if not self.physical_id and self.status == self.ERROR:
+            return True
 
         try:
             res = pb.Profile.check_object(context, self)
@@ -430,8 +430,6 @@ class Node(object):
 
         This function is supposed to be invoked from a NODE_RECOVER action.
         """
-        if not self.physical_id:
-            return False
 
         self.set_status(context, self.RECOVERING,
                         reason=_('Recover in progress'))
