@@ -232,9 +232,9 @@ class NodeAction(base.Action):
         """
         res = self.node.do_check(self.context)
         if res:
-            return self.RES_OK, _('Node status is ACTIVE.')
+            return self.RES_OK, _('Node check succeeded.')
         else:
-            return self.RES_ERROR, _('Node status is not ACTIVE.')
+            return self.RES_ERROR, _('Node check failed.')
 
     def do_set_protect(self):
         """Handler for the NODE_SET_PROTECT action.
