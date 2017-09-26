@@ -398,8 +398,13 @@ class Node(object):
         try:
             res = pb.Profile.check_object(context, self)
         except exc.EResourceOperation as ex:
-            self.set_status(context, self.ERROR, six.text_type(ex))
-            return False
+            if "No Server found" in six.text_type(ex):
+                self.set_status(context, self.ERROR, six.text_type(ex),
+                                physical_id=None)
+                return True
+            else:
+                self.set_status(context, self.ERROR, six.text_type(ex))
+                return False
 
         if res:
             self.set_status(context, self.ACTIVE,
