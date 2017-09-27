@@ -425,6 +425,11 @@ class Node(object):
 
         return True, _('Node remove protect.')
 
+    def do_reset_state(self, context):
+        self.set_status(context, self.ERROR, _('Node reset state.'))
+
+        return True, _('Node reset state.')
+
     def do_recover(self, context, **options):
         """recover a node.
 
