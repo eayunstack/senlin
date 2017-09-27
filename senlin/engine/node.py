@@ -392,14 +392,19 @@ class Node(object):
             return False
 
     def do_check(self, context):
-        if not self.physical_id:
-            return False
+        if not self.physical_id and self.status == self.ERROR:
+            return True
 
         try:
             res = pb.Profile.check_object(context, self)
         except exc.EResourceOperation as ex:
-            self.set_status(context, self.ERROR, six.text_type(ex))
-            return False
+            if "No Server found" in six.text_type(ex):
+                self.set_status(context, self.ERROR, six.text_type(ex),
+                                physical_id=None)
+                return True
+            else:
+                self.set_status(context, self.ERROR, six.text_type(ex))
+                return False
 
         if res:
             self.set_status(context, self.ACTIVE,
@@ -425,8 +430,6 @@ class Node(object):
 
         This function is supposed to be invoked from a NODE_RECOVER action.
         """
-        if not self.physical_id:
-            return False
 
         self.set_status(context, self.RECOVERING,
                         reason=_('Recover in progress'))
