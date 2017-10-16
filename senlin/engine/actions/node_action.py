@@ -70,7 +70,7 @@ class NodeAction(base.Action):
 
             if result:
                 params = {'cluster_id': ''}
-                self.node.set_status(self.context, self.RES_ERROR, **params)
+                self.entity.set_status(self.context, self.RES_ERROR, **params)
                 return self.RES_ERROR, result
             # Update cluster desired_capacity if node is already in db.
             cluster.desired_capacity += 1
@@ -261,7 +261,7 @@ class NodeAction(base.Action):
 
         :returns: A tuple containing the result and the corresponding reason.
         """
-        res, reason = self.node.do_reset_state(self.context)
+        res, reason = self.entity.do_reset_state(self.context)
         result = self.RES_OK if res else self.RES_ERROR
 
         return result, reason
