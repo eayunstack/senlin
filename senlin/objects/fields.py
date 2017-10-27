@@ -178,17 +178,19 @@ class NotificationAction(fields.Enum):
         CLUSTER_ADD_NODES, CLUSTER_DEL_NODES, CLUSTER_REPLACE_NODES,
         CLUSTER_SCALE_OUT, CLUSTER_SCALE_IN, CLUSTER_RESIZE,
         CLUSTER_ATTACH_POLICY, CLUSTER_DETACH_POLICY, CLUSTER_UPDATE_POLICY,
-        CLUSTER_CHECK, CLUSTER_RECOVER,
-        NODE_CREATE, NODE_DELETE, NODE_UPDATE,
-        NODE_CHECK, NODE_RECOVER
+        CLUSTER_CHECK, CLUSTER_RECOVER, CLUSTER_SUSPEND, CLUSTER_RESUME,
+        NODE_CREATE, NODE_DELETE, NODE_UPDATE, NODE_CHECK, NODE_RECOVER,
+        NODE_SET_PROTECT, NODE_REMOVE_PROTECT, NODE_REMOVE,
+        NODE_JOIN, NODE_LEAVE, NODE_RESET_STATE
     ) = (
         'create', 'delete', 'update',
         'add_nodes', 'del_nodes', 'replace_nodes',
         'scale_out', 'scale_in', 'resize',
         'attach_policy', 'detach_policy', 'update_policy',
-        'check', 'recover',
-        'create', 'delete', 'update',
-        'check', 'recover',
+        'check', 'recover', 'suspend', 'resume',
+        'create', 'delete', 'update', 'check', 'recover',
+        'set_protect', 'remove_protect', 'remove',
+        'join', 'leave', 'reset_state'
     )
 
     def __init__(self):
