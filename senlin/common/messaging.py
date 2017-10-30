@@ -71,7 +71,7 @@ def setup(url=None, optional=False):
     if not NOTIFIER and TRANSPORT:
         serializer = RequestContextSerializer(JsonPayloadSerializer())
         NOTIFIER = messaging.Notifier(TRANSPORT, serializer=serializer,
-                                      topics=['versioned_notifications'])
+                                      topics=['notifications'])
 
 
 def cleanup():
