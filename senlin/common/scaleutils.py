@@ -26,8 +26,14 @@ LOG = logging.getLogger(__name__)
 
 
 def calculate_desired(current, adj_type, number, min_step):
-    '''Calculate desired capacity based on the type and number values.'''
+    """Calculate desired capacity based on the type and number values.
 
+    :param current: Current capacity of the cluster.
+    :param adj_type: Type of adjustment.
+    :param number: Number for the corresponding adjustment type.
+    :param min_step: Minimum number of nodes to create/delete.
+    :returns: A number representing the desired capacity.
+    """
     if adj_type == consts.EXACT_CAPACITY:
         desired = number
     elif adj_type == consts.CHANGE_IN_CAPACITY:
@@ -51,7 +57,13 @@ def calculate_desired(current, adj_type, number, min_step):
 
 
 def truncate_desired(cluster, desired, min_size, max_size):
-    '''Do truncation of desired capacity for non-strict cases.'''
+    """Do truncation of desired capacity for non-strict cases.
+
+    :param cluster: The target cluster.
+    :param desired: The expected capacity of the cluster.
+    :param min_size: The NEW minimum capacity set for the cluster.
+    :param max_size: The NEW maximum capacity set for the cluster.
+    """
 
     if min_size is not None and desired < min_size:
         desired = min_size
@@ -158,8 +170,19 @@ def check_size_params(cluster=None, desired=None, min_size=None, max_size=None,
     return None
 
 
-def parse_resize_params(action, cluster):
-    '''Parse the parameters of CLUSTER_RESIZE action.'''
+def parse_resize_params(action, cluster, current=None):
+    """Parse the parameters of CLUSTER_RESIZE action.
+
+    :param action: The current action which contains some inputs for parsing.
+    :param cluster: The target cluster to operate.
+    :param current: The current capacity of the cluster.
+    :returns: A tuple containing a flag and a message. In the case of a
+              success, the flag should be action.RES_OK and the message can be
+              ignored. The action.data will contain a dict indicating the
+              operation and parameters for further processing. In the case of
+              a failure, the flag should be action.RES_ERROR and the message
+              will contain a string message indicating the reason of failure.
+    """
 
     adj_type = action.inputs.get(consts.ADJUSTMENT_TYPE, None)
     number = action.inputs.get(consts.ADJUSTMENT_NUMBER, None)
@@ -168,10 +191,12 @@ def parse_resize_params(action, cluster):
     min_step = action.inputs.get(consts.ADJUSTMENT_MIN_STEP, None)
     strict = action.inputs.get(consts.ADJUSTMENT_STRICT, False)
 
-    desired = cluster.desired_capacity
+    current = current or cluster.desired_capacity
     if adj_type is not None:
         # number must be not None according to previous tests
-        desired = calculate_desired(desired, adj_type, number, min_step)
+        desired = calculate_desired(current, adj_type, number, min_step)
+    else:
+        desired = current
 
     # truncate adjustment if permitted (strict==False)
     if strict is False:
@@ -184,7 +209,7 @@ def parse_resize_params(action, cluster):
         return action.RES_ERROR, result
 
     # save sanitized properties
-    count = cluster.desired_capacity - desired
+    count = current - desired
     if count > 0:
         action.data.update({
             'deletion': {
@@ -232,17 +257,22 @@ def nodes_by_random(nodes, count):
     :return: a list of IDs for victim nodes.
     """
     selected, candidates = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in candidates if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
+    count = count if count <= len(general_nodes) else len(general_nodes)
     random.seed()
 
     i = count
     while i > 0:
-        rand = random.randrange(len(candidates))
-        selected.append(candidates[rand].id)
-        candidates.remove(candidates[rand])
+        rand = random.randrange(len(general_nodes))
+        selected.append(general_nodes[rand].id)
+        general_nodes.remove(general_nodes[rand])
         i = i - 1
 
     return selected
@@ -257,11 +287,17 @@ def nodes_by_age(nodes, count, old_first):
     :return: a list of IDs for victim nodes.
     """
     selected, candidates = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in candidates if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
-    sorted_list = sorted(candidates, key=lambda r: r.created_at)
+    count = count if count <= len(general_nodes) else len(general_nodes)
+
+    sorted_list = sorted(general_nodes, key=lambda r: r.created_at)
     for i in range(count):
         if old_first:
             selected.append(sorted_list[i].id)
@@ -280,20 +316,28 @@ def nodes_by_profile_age(nodes, count):
     :return: a list of IDs for victim nodes.
     """
     selected, nodes = filter_error_nodes(nodes)
+
+    # general_nodes is a node list of candidates that not PROTECTED status
+    general_nodes = [n for n in nodes if n.status != 'PROTECTED']
+
     if count <= len(selected):
         return selected[:count]
 
     count -= len(selected)
+    count = count if count <= len(general_nodes) else len(general_nodes)
+
     node_map = []
-    for node in nodes:
+    for node in general_nodes:
         entry = {
             'id': node.id,
-            'created_at': node.rt['profile'].created_at
+            'created_at': node.rt['profile'].created_at,
+            'status': node.status
         }
         node_map.append(entry)
 
     sorted_map = sorted(node_map, key=lambda m: m['created_at'])
     for i in range(count):
-        selected.append(sorted_map[i]['id'])
+        if sorted_map[i]['status'] != 'PROTECTED':
+            selected.append(sorted_map[i]['id'])
 
     return selected

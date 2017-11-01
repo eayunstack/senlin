@@ -130,6 +130,34 @@ class ReceiverController(wsgi.Controller):
         return {'receiver': receiver}
 
     @util.policy_enforce
+    def update(self, req, receiver_id, body):
+        receiver_data = body.get('receiver', None)
+        if receiver_data is None:
+            raise exc.HTTPBadRequest(_("Malformed request data, missing "
+                                       "'receiver' key in request body."))
+        params_not_allow = [consts.RECEIVER_ACTOR, consts.RECEIVER_CLUSTER_ID,
+                            consts.RECEIVER_CLUSTER, consts.RECEIVER_CHANNEL,
+                            consts.RECEIVER_TYPE]
+        bad_params = []
+        for i in params_not_allow:
+            if receiver_data.get(i):
+                bad_params.append(receiver_data.get(i))
+
+        if len(bad_params) != 0:
+            msg = _("The params %s receiver update don't supported" %
+                    bad_params)
+            raise exc.HTTPBadRequest(msg)
+
+        name = receiver_data.get(consts.RECEIVER_NAME, None)
+        action = receiver_data.get(consts.RECEIVER_ACTION, None)
+        params = receiver_data.get(consts.RECEIVER_PARAMS, None)
+        # We don't check if type is specified or not
+        receiver = self.rpc_client.receiver_update(req.context, receiver_id,
+                                                   name, action, params)
+
+        return {'receiver': receiver}
+
+    @util.policy_enforce
     def delete(self, req, receiver_id):
         self.rpc_client.receiver_delete(req.context, receiver_id, cast=False)
         raise exc.HTTPNoContent()

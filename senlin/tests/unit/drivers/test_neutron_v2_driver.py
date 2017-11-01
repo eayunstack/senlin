@@ -53,6 +53,16 @@ class TestNeutronV2Driver(base.SenlinTestCase):
         self.conn.network.find_port.assert_called_once_with(port_id, False)
         self.assertEqual(port_obj, res)
 
+    def test_security_group_find(self):
+        sg_id = 'sg_identifier'
+        sg_obj = mock.Mock()
+
+        self.conn.network.find_security_group.return_value = sg_obj
+        res = self.nc.security_group_find(sg_id)
+        self.conn.network.find_security_group.assert_called_once_with(
+            sg_id, False)
+        self.assertEqual(sg_obj, res)
+
     def test_subnet_get(self):
         subnet_id = 'subnet_identifier'
         subnet_obj = mock.Mock()
@@ -365,3 +375,45 @@ class TestNeutronV2Driver(base.SenlinTestCase):
         self.nc.healthmonitor_delete(healthmonitor_id)
         self.conn.network.delete_health_monitor.assert_called_with(
             healthmonitor_id, ignore_missing=True)
+
+    def test_port_create(self):
+        port_attr = {
+            'network_id': 'foo'
+        }
+        self.nc.port_create(**port_attr)
+        self.conn.network.create_port.assert_called_once_with(
+            network_id='foo')
+
+    def test_port_delete(self):
+        self.nc.port_delete(port='foo')
+        self.conn.network.delete_port.assert_called_once_with(
+            port='foo', ignore_missing=True)
+
+    def test_port_update(self):
+        attr = {
+            'name': 'new_name'
+        }
+        self.nc.port_update('fake_port', **attr)
+        self.conn.network.update_port.assert_called_once_with(
+            'fake_port', **attr)
+
+    def test_floatingip_create(self):
+        attr = {
+            'network_id': 'foo'
+        }
+        self.nc.floatingip_create(**attr)
+        self.conn.network.create_ip.assert_called_once_with(
+            network_id='foo')
+
+    def test_floatingip_delete(self):
+        self.nc.floatingip_delete(floating_ip='foo')
+        self.conn.network.delete_ip.assert_called_once_with(
+            'foo', ignore_missing=True)
+
+    def test_floatingip_update(self):
+        attr = {
+            'port_id': 'fake_port'
+        }
+        self.nc.floatingip_update('fake_floatingip', **attr)
+        self.conn.network.update_ip.assert_called_once_with(
+            'fake_floatingip', **attr)

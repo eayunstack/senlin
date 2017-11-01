@@ -10,13 +10,30 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import inspect
+
+import six
+
 from senlin.common import messaging
 from senlin.objects import base
 from senlin.objects import fields
 
 
-@base.SenlinObjectRegistry.register
-class EventType(base.SenlinObject):
+@base.SenlinObjectRegistry.register_if(False)
+class NotificationObject(base.SenlinObject):
+    """Base class for all notification related versioned objects."""
+    VERSION = '1.0'
+
+    def __init__(self, **kwargs):
+        # The notification objects are created on the fly so every field is
+        # shown as changed. We reset the object after creation to avoid
+        # sending such meaningless information.
+        super(NotificationObject, self).__init__(**kwargs)
+        self.obj_reset_changes(recursive=False)
+
+
+@base.SenlinObjectRegistry.register_notification
+class EventType(NotificationObject):
     VERSION = '1.0'
 
     fields = {
@@ -33,60 +50,26 @@ class EventType(base.SenlinObject):
         return s
 
 
-class NotificationPayloadBase(base.SenlinObject):
-    """Base class for the payload of versioned notifications."""
-    # schema is a dict that defines how to populate the payload fields, where
-    # each key-value pair has the following format:
-    #
-    # <payload_field>: (<data_source>, <data_source_field>)
-    #
-    # The <payload_field> is the name where the data will be stored in the
-    # payload object, this field has to be defined as a field of the payload.
-    # The <data_source> field shall refer to name of the parameter passed as
-    # kwarg to the payload's populate_schema() call and this object will be
-    # used as the source of the data.
-    # The 'schema' needs to be applied with the populate_schema() call before
-    # the notification can be emitted.
-    # The value of the payload.<payload_field> field will be set by the
-    # <data_source>.<data_source_field> field. The <data_source> will not be
-    # part of the payload object internal or external representation.
-    # Payload fields that are not set by the schema can be filled in the same
-    # way as in any versioned object.
-    schema = {}
-    VERSION = '1.0'
-
-    def __init__(self, *args, **kwargs):
-        super(NotificationPayloadBase, self).__init__(*args, **kwargs)
-        self.populated = not self.schema
-
-    def populate_schema(self, **kwargs):
-        """Populate the object based on the schema and the source objects
-
-        :param kwargs: A dict contains the source object at the key defined in
-                       the schema
-        """
-        for key, (obj, field) in self.schema.items():
-            source = kwargs[obj]
-            if source.obj_attr_is_set(field):
-                setattr(self, key, getattr(source, field))
-        self.populated = True
-
-
-@base.SenlinObjectRegistry.register
-class NotificationPublisher(base.SenlinObject):
+@base.SenlinObjectRegistry.register_notification
+class NotificationPublisher(NotificationObject):
     VERSION = '1.0'
 
     fields = {
-        'host': fields.StringField(nullable=False),
-        'binary': fields.StringField(nullable=False),
+        'host': fields.StringField(),
+        'binary': fields.StringField(),
     }
 
     @classmethod
-    def from_service_obj(cls, service):
+    def from_service(cls, service):
         return cls(host=service.host, binary=service.binary)
 
+    @property
+    def publisher_id(self):
+        return '%s:%s' % (self.binary, self.host)
 
-class NotificationBase(base.SenlinObject):
+
+@base.SenlinObjectRegistry.register_if(False)
+class NotificationBase(NotificationObject):
     """Base class for versioned notifications.
 
     Every subclass shall define a 'payload' field.
@@ -102,25 +85,18 @@ class NotificationBase(base.SenlinObject):
     def _emit(self, context, event_type, publisher_id, payload):
         notifier = messaging.get_notifier(publisher_id)
         notify = getattr(notifier, self.priority)
-        notify(context, event_type=event_type, payload=payload)
+        notify(context, event_type, payload)
 
     def emit(self, context):
         """Send the notification."""
-        assert self.payload.populated
-
-        # Note(gibi): notification payload will be a newly populated object
-        # therefore every field of it will look changed so this does not carry
-        # any extra information so we drop this from the payload.
         self.payload.obj_reset_changes(recursive=False)
-
         self._emit(context,
-                   event_type=self.event_type.to_notification_field(),
-                   publisher_id='%s:%s' %
-                                (self.publisher.binary,
-                                 self.publisher.host),
-                   payload=self.payload.obj_to_primitive())
+                   self.event_type.to_notification_field(),
+                   self.publisher.publisher_id,
+                   self.payload.obj_to_primitive())
 
 
+# TODO(Qiming): revisit this and see if we should remove it
 def notification_sample(sample):
     """Class decorator for documentation generation.
 
@@ -135,3 +111,192 @@ def notification_sample(sample):
         cls.sample = sample
         return cls
     return wrap
+
+
+@base.SenlinObjectRegistry.register_notification
+class ExceptionPayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'module': fields.StringField(),
+        'function': fields.StringField(),
+        'exception': fields.StringField(),
+        'message': fields.StringField(),
+    }
+
+    @classmethod
+    def from_exception(cls, exc):
+        if exc is None:
+            return None
+        trace = inspect.trace()[-1]
+        module = inspect.getmodule(trace[0])
+        module_name = module.__name__ if module else 'unknown'
+        return cls(function=trace[3], module=module_name,
+                   exception=exc.__class__.__name__,
+                   message=six.text_type(exc))
+
+
+@base.SenlinObjectRegistry.register_notification
+class ClusterPayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'id': fields.UUIDField(),
+        'name': fields.StringField(),
+        'profile_id': fields.UUIDField(),
+        'init_at': fields.DateTimeField(),
+        'created_at': fields.DateTimeField(nullable=True),
+        'updated_at': fields.DateTimeField(nullable=True),
+        'min_size': fields.IntegerField(),
+        'max_size': fields.IntegerField(),
+        'desired_capacity': fields.IntegerField(),
+        'timeout': fields.IntegerField(),
+        'status': fields.StringField(),
+        'status_reason': fields.StringField(),
+        'metadata': fields.JsonField(nullable=True),
+        'data': fields.JsonField(nullable=True),
+        'user': fields.StringField(),
+        'project': fields.StringField(),
+        'domain': fields.StringField(nullable=True),
+        'dependents': fields.JsonField(nullable=True),
+    }
+
+    @classmethod
+    def from_cluster(cls, cluster):
+        values = {}
+        for field in cls.fields:
+            values[field] = getattr(cluster, field)
+        obj = cls(**values)
+        obj.obj_reset_changes(recursive=False)
+        return obj
+
+
+@base.SenlinObjectRegistry.register_notification
+class NodePayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'id': fields.UUIDField(),
+        'name': fields.StringField(),
+        'profile_id': fields.UUIDField(),
+        'cluster_id': fields.StringField(),
+        'physical_id': fields.UUIDField(nullable=True),
+        'index': fields.IntegerField(),
+        'role': fields.StringField(nullable=True),
+        'init_at': fields.DateTimeField(),
+        'created_at': fields.DateTimeField(nullable=True),
+        'updated_at': fields.DateTimeField(nullable=True),
+        'status': fields.StringField(),
+        'status_reason': fields.StringField(),
+        'metadata': fields.JsonField(nullable=True),
+        'data': fields.JsonField(nullable=True),
+        'user': fields.StringField(),
+        'project': fields.StringField(),
+        'domain': fields.StringField(nullable=True),
+        'dependents': fields.JsonField(nullable=True),
+    }
+
+    @classmethod
+    def from_node(cls, node):
+        values = {}
+        for field in cls.fields:
+            values[field] = getattr(node, field)
+        obj = cls(**values)
+        obj.obj_reset_changes(recursive=False)
+        return obj
+
+
+@base.SenlinObjectRegistry.register_notification
+class ActionPayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'id': fields.UUIDField(),
+        'name': fields.StringField(),
+        'created_at': fields.DateTimeField(nullable=True),
+        'target': fields.UUIDField(),
+        'action': fields.StringField(),
+        'start_time': fields.FloatField(),
+        'end_time': fields.FloatField(nullable=True),
+        'timeout': fields.IntegerField(nullable=True),
+        'status': fields.StringField(),
+        'status_reason': fields.StringField(),
+        'inputs': fields.JsonField(nullable=True),
+        'outputs': fields.JsonField(nullable=True),
+        'data': fields.JsonField(nullable=True),
+        'user': fields.StringField(),
+        'project': fields.StringField(),
+    }
+
+    @classmethod
+    def from_action(cls, action):
+        values = {}
+        for field in cls.fields:
+            values[field] = getattr(action, field)
+        obj = cls(**values)
+        obj.obj_reset_changes(recursive=False)
+        return obj
+
+
+@base.SenlinObjectRegistry.register_notification
+class ClusterActionPayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'cluster': fields.ObjectField('ClusterPayload'),
+        'action': fields.ObjectField('ActionPayload'),
+        'exception': fields.ObjectField('ExceptionPayload', nullable=True),
+    }
+
+    def __init__(self, cluster, action, **kwargs):
+        ex = kwargs.pop('exception', None)
+        super(ClusterActionPayload, self).__init__(
+            cluster=ClusterPayload.from_cluster(cluster),
+            action=ActionPayload.from_action(action),
+            exception=ex,
+            **kwargs)
+
+
+@base.SenlinObjectRegistry.register_notification
+class NodeActionPayload(NotificationObject):
+
+    VERSION = '1.0'
+
+    fields = {
+        'node': fields.ObjectField('NodePayload'),
+        'action': fields.ObjectField('ActionPayload'),
+        'exception': fields.ObjectField('ExceptionPayload', nullable=True),
+    }
+
+    def __init__(self, node, action, **kwargs):
+        ex = kwargs.pop('exception', None)
+        super(NodeActionPayload, self).__init__(
+            node=NodePayload.from_node(node),
+            action=ActionPayload.from_action(action),
+            exception=ex,
+            **kwargs)
+
+
+@base.SenlinObjectRegistry.register_notification
+class ClusterActionNotification(NotificationBase):
+
+    VERSION = '1.0'
+
+    fields = {
+        'payload': fields.ObjectField('ClusterActionPayload')
+    }
+
+
+@base.SenlinObjectRegistry.register_notification
+class NodeActionNotification(NotificationBase):
+
+    VERSION = '1.0'
+
+    fields = {
+        'payload': fields.ObjectField('NodeActionPayload')
+    }

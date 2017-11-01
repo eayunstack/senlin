@@ -20,6 +20,7 @@ from senlin.common.i18n import _
 from senlin.common.i18n import _LE
 from senlin.common import utils
 from senlin.engine import cluster_policy as cpm
+from senlin.engine import health_manager
 from senlin.engine import node as node_mod
 from senlin.objects import cluster as co
 from senlin.objects import cluster_policy as cpo
@@ -42,9 +43,11 @@ class Cluster(object):
     STATUSES = (
         INIT, ACTIVE, CREATING, UPDATING, RESIZING, DELETING,
         CHECKING, RECOVERING, CRITICAL, ERROR, WARNING,
+        SUSPEND,
     ) = (
         'INIT', 'ACTIVE', 'CREATING', 'UPDATING', 'RESIZING', 'DELETING',
         'CHECKING', 'RECOVERING', 'CRITICAL', 'ERROR', 'WARNING',
+        'SUSPEND',
     )
 
     def __init__(self, name, desired_capacity, profile_id,
@@ -397,6 +400,12 @@ class Cluster(object):
             return True, _('No update is needed.')
 
         params = {'enabled': bool(enabled)}
+        # disable health check if necessary
+        if existing.type == 'senlin.policy.health':
+            if enabled is True:
+                health_manager.enable(self.id)
+            else:
+                health_manager.disable(self.id)
 
         cpo.ClusterPolicy.update(ctx, self.id, policy_id, params)
         return True, _('Policy updated.')
@@ -536,28 +545,47 @@ class Cluster(object):
         for node in self.nodes:
             if node.status == 'ACTIVE':
                 active_count += 1
-
+        # get provided desired_capacity/min_size/max_size
+        desired = params.get('desired_capacity', self.desired_capacity)
+        min_size = params.get('min_size', self.min_size)
+        max_size = params.get('max_size', self.max_size)
         values = params or {}
-        if active_count < self.min_size:
+        if active_count < min_size:
             status = self.ERROR
             reason = _("%(o)s: number of active nodes is below min_size "
-                       "(%(n)d).") % {'o': operation, 'n': self.min_size}
-        elif active_count < self.desired_capacity:
+                       "(%(n)d).") % {'o': operation, 'n': min_size}
+        elif active_count < desired:
             status = self.WARNING
             reason = _("%(o)s: number of active nodes is below "
                        "desired_capacity "
                        "(%(n)d).") % {'o': operation,
-                                      'n': self.desired_capacity}
-        elif self.max_size < 0 or active_count <= self.max_size:
+                                      'n': desired}
+        elif max_size < 0 or active_count <= max_size:
             status = self.ACTIVE
             reason = _("%(o)s: number of active nodes is above "
                        "desired_capacity "
                        "(%(n)d).") % {'o': operation,
-                                      'n': self.desired_capacity}
+                                      'n': desired}
         else:
             status = self.WARNING
             reason = _("%(o)s: number of active nodes is above max_size "
-                       "(%(n)d).") % {'o': operation, 'n': self.max_size}
+                       "(%(n)d).") % {'o': operation, 'n': max_size}
 
         values.update({'status': status, 'status_reason': reason})
         co.Cluster.update(ctx, self.id, values)
+
+    def do_suspend(self, context, **kwargs):
+        """Suspend cluster.
+
+        Set cluster status to Suspend.
+        """
+        self.set_status(context, self.SUSPEND, _('Cluster suspend'))
+        return True, _('Cluster stopped.')
+
+    def do_resume(self, context, **kwargs):
+        """Resume cluster.
+
+        Set cluster status to ACTIVE.
+        """
+        self.set_status(context, self.ACTIVE, _('Cluster resume'))
+        return True, _('Cluster actived.')

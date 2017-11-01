@@ -40,10 +40,12 @@
     "receivers:index": "",
     "receivers:create": "",
     "receivers:get": "",
+    "receivers:update": "",
     "receivers:delete": "",
     "actions:index": "",
     "actions:get": "",
     "events:index": "",
     "events:get": "",
-    "webhooks:trigger": ""
+    "webhooks:trigger": "",
+    "services:index": "role:admin"
 }

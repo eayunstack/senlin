@@ -32,6 +32,11 @@ class NeutronClient(base.DriverBase):
         return port
 
     @sdk.translate_exception
+    def security_group_find(self, name_or_id, ignore_missing=False):
+        sg = self.conn.network.find_security_group(name_or_id, ignore_missing)
+        return sg
+
+    @sdk.translate_exception
     def subnet_get(self, name_or_id, ignore_missing=False):
         subnet = self.conn.network.find_subnet(name_or_id, ignore_missing)
         return subnet
@@ -117,6 +122,12 @@ class NeutronClient(base.DriverBase):
         return pool
 
     @sdk.translate_exception
+    def pool_get_v1(self, name_or_id, ignore_missing=False):
+        pool = self.conn.network.find_pool_v1(name_or_id,
+                                              ignore_missing)
+        return pool
+
+    @sdk.translate_exception
     def pool_list(self):
         pools = [p for p in self.conn.network.pools()]
         return pools
@@ -176,9 +187,30 @@ class NeutronClient(base.DriverBase):
         return res
 
     @sdk.translate_exception
+    def pool_member_create_v1(self, pool_id, address, protocol_port,
+                              weight=None, admin_state_up=True):
+        kwargs = {
+            'address': address,
+            'protocol_port': protocol_port,
+            'admin_state_up': admin_state_up,
+        }
+
+        if weight is not None:
+            kwargs['weight'] = weight
+        res = self.conn.network.create_pool_member_v1(pool_id, **kwargs)
+        return res
+
+    @sdk.translate_exception
     def pool_member_delete(self, pool_id, member_id, ignore_missing=True):
         self.conn.network.delete_pool_member(
             member_id, pool_id, ignore_missing=ignore_missing)
+        return
+
+    @sdk.translate_exception
+    def pool_member_delete_v1(self, member_id, ignore_missing=True):
+        self.conn.network.delete_pool_member_v1(
+            member_id, ignore_missing=ignore_missing
+        )
         return
 
     @sdk.translate_exception
@@ -223,3 +255,54 @@ class NeutronClient(base.DriverBase):
         self.conn.network.delete_health_monitor(
             hm_id, ignore_missing=ignore_missing)
         return
+
+    @sdk.translate_exception
+    def port_create(self, net_id, subnet_id, name=None):
+        kwargs = {
+            "fixed_ips": [
+                {"subnet_id": subnet_id}
+            ],
+            "network_id": net_id,
+        }
+        if name is not None:
+            kwargs['name'] = name
+
+        res = self.conn.network.create_port(**kwargs)
+        return res
+
+    @sdk.translate_exception
+    def port_delete(self, port, ignore_missing=True):
+        res = self.conn.network.delete_port(
+            port=port, ignore_missing=ignore_missing)
+        return res
+
+    @sdk.translate_exception
+    def port_update(self, port, secgroups):
+        attr = {
+            'security_groups': secgroups
+        }
+        res = self.conn.network.update_port(port, **attr)
+        return res
+
+    @sdk.translate_exception
+    def floatingip_find(self, name_or_id, ignore_missing=False):
+        res = self.conn.network.find_ip(
+            name_or_id, ignore_missing=ignore_missing)
+        return res
+
+    @sdk.translate_exception
+    def floatingip_create(self, float_netid):
+        kwargs = {"floating_network_id": float_netid}
+        res = self.conn.network.create_ip(**kwargs)
+        return res
+
+    @sdk.translate_exception
+    def floatingip_delete(self, floating_ip, ignore_missing=True):
+        res = self.conn.network.delete_ip(
+            floating_ip, ignore_missing=ignore_missing)
+        return res
+
+    @sdk.translate_exception
+    def floatingip_update(self, floating_ip, **attr):
+        res = self.conn.network.update_ip(floating_ip, **attr)
+        return res

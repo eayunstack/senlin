@@ -44,6 +44,7 @@ class FaultWrapper(wsgi.Middleware):
     """Replace error body with something the client can parse."""
 
     error_map = {
+        'ActionForbidden': webob.exc.HTTPForbidden,
         'ActionInProgress': webob.exc.HTTPConflict,
         'BadRequest': webob.exc.HTTPBadRequest,
         'ClusterBusy': webob.exc.HTTPConflict,
@@ -62,6 +63,7 @@ class FaultWrapper(wsgi.Middleware):
         'ResourceInUse': webob.exc.HTTPConflict,
         'ResourceNotFound': webob.exc.HTTPNotFound,
         'SpecValidationFailed': webob.exc.HTTPBadRequest,
+        'ForbiddenAction': webob.exc.HTTPForbidden,
     }
 
     def _map_exception_to_error(self, class_exception):

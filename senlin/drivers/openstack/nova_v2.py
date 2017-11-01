@@ -12,6 +12,7 @@
 
 from oslo_config import cfg
 from oslo_log import log
+from openstack import exceptions
 
 from senlin.common.i18n import _LW
 from senlin.drivers import base
@@ -116,9 +117,14 @@ class NovaClient(base.DriverBase):
 
     @sdk.translate_exception
     def server_force_delete(self, server, ignore_missing=True):
-        return self.conn.compute.delete_server(server,
-                                               ignore_missing=ignore_missing,
-                                               force=True)
+        try:
+            sv = self.conn.compute.delete_server(server,
+                                                 ignore_missing=ignore_missing,
+                                                 force=True)
+            return sv
+        except exceptions.NotFoundException:
+            LOG.warning(_LW("No server with a name or ID of %s exists."
+                            % (server)))
 
     @sdk.translate_exception
     def server_rebuild(self, server, image, name=None, admin_password=None,
@@ -296,3 +302,26 @@ class NovaClient(base.DriverBase):
                                                  service.host,
                                                  service.binary,
                                                  disabled_reason)
+
+    @sdk.translate_exception
+    def server_floatingip_associate(self, server, address):
+        return self.conn.compute.add_floating_ip_to_server(server, address)
+
+    @sdk.translate_exception
+    def server_floatingip_disassociate(self, server, address):
+        return self.conn.compute.remove_floating_ip_from_server(server,
+                                                                address)
+
+    @sdk.translate_exception
+    def create_volume_attachment(self, server, **attr):
+        return self.conn.compute.create_volume_attachment(server, **attr)
+
+    @sdk.translate_exception
+    def delete_volume_attachment(self, volume_id, server, ignore_missing=True):
+        return self.conn.compute.delete_volume_attachment(
+            volume_id, server, ignore_missing=ignore_missing
+        )
+
+    @sdk.translate_exception
+    def server_state_reset(self, server, state=None):
+        return self.conn.compute.reset_server_state(server, state)

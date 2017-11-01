@@ -21,6 +21,7 @@ from oslo_config import cfg
 from oslo_i18n import _lazy
 from oslo_log import log as logging
 from oslo_service import systemd
+from oslo_concurrency import processutils
 import six
 
 from senlin.api.common import wsgi
@@ -47,6 +48,8 @@ def main():
         port = cfg.CONF.senlin_api.bind_port
         LOG.info(_LI('Starting Senlin API on %(host)s:%(port)s'),
                  {'host': host, 'port': port})
+        if cfg.CONF.senlin_api.workers <= 1:
+            cfg.CONF.senlin_api.workers = processutils.get_worker_count()
         server = wsgi.Server('senlin-api', cfg.CONF.senlin_api)
         server.start(app, default_port=port)
         systemd.notify_once()

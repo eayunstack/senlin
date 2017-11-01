@@ -17,6 +17,7 @@ Implementation of SQLAlchemy backend.
 import six
 import sys
 import threading
+import time
 
 from oslo_db import api as oslo_db_api
 from oslo_db import exception as db_exc
@@ -137,7 +138,7 @@ def cluster_get_by_short_id(context, short_id, project_safe=True):
 def _query_cluster_get_all(context, project_safe=True):
     query = model_query(context, models.Cluster)
 
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
     return query
 
@@ -244,7 +245,7 @@ def _query_node_get_all(context, project_safe=True, cluster_id=None):
     if cluster_id is not None:
         query = query.filter_by(cluster_id=cluster_id)
 
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
 
     return query
@@ -347,8 +348,25 @@ def cluster_lock_acquire(cluster_id, action_id, scope):
                                       action_ids=[six.text_type(action_id)],
                                       semaphore=scope)
             session.add(lock)
-
         return lock.action_ids
+
+
+def _release_cluster_lock(session, lock, action_id, scope):
+
+    success = False
+    if (scope == -1 and lock.semaphore < 0) or lock.semaphore == 1:
+        if six.text_type(action_id) in lock.action_ids:
+            session.delete(lock)
+            success = True
+    elif six.text_type(action_id) in lock.action_ids:
+        if lock.semaphore == 1:
+            session.delete(lock)
+        else:
+            lock.action_ids.remove(six.text_type(action_id))
+            lock.semaphore -= 1
+            lock.save(session)
+        success = True
+    return success
 
 
 def cluster_lock_release(cluster_id, action_id, scope):
@@ -365,21 +383,7 @@ def cluster_lock_release(cluster_id, action_id, scope):
         if lock is None:
             return False
 
-        success = False
-        if scope == -1 or lock.semaphore == 1:
-            if six.text_type(action_id) in lock.action_ids:
-                session.delete(lock)
-                success = True
-        elif action_id in lock.action_ids:
-            if lock.semaphore == 1:
-                session.delete(lock)
-            else:
-                lock.action_ids.remove(six.text_type(action_id))
-                lock.semaphore -= 1
-                lock.save(session)
-            success = True
-
-        return success
+        return _release_cluster_lock(session, lock, action_id, scope)
 
 
 def cluster_lock_steal(cluster_id, action_id):
@@ -469,7 +473,7 @@ def policy_get_all(context, limit=None, marker=None, sort=None, filters=None,
                    project_safe=True):
     query = model_query(context, models.Policy)
 
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
 
     if filters:
@@ -613,7 +617,7 @@ def profile_get_all(context, limit=None, marker=None, sort=None, filters=None,
                     project_safe=True):
     query = model_query(context, models.Profile)
 
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
 
     if filters:
@@ -732,7 +736,7 @@ def _event_filter_paginate_query(context, query, filters=None,
 def event_get_all(context, limit=None, marker=None, sort=None, filters=None,
                   project_safe=True):
     query = model_query(context, models.Event)
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
 
     return _event_filter_paginate_query(context, query, filters=filters,
@@ -1110,7 +1114,7 @@ def receiver_get(context, receiver_id, project_safe=True):
 def receiver_get_all(context, limit=None, marker=None, filters=None, sort=None,
                      project_safe=True):
     query = model_query(context, models.Receiver)
-    if not context.is_admin and project_safe:
+    if project_safe:
         query = query.filter_by(project=context.project)
 
     if filters:
@@ -1133,6 +1137,17 @@ def receiver_get_by_short_id(context, short_id, project_safe=True):
                              project_safe=project_safe)
 
 
+def receiver_update(context, receiver_id, values):
+    with session_for_write() as session:
+        receiver = session.query(models.Receiver).get(receiver_id)
+        if not receiver:
+            raise exception.ResourceNotFound(type='receiver', id=receiver_id)
+
+        receiver.update(values)
+        receiver.save(session)
+        return receiver
+
+
 def receiver_delete(context, receiver_id):
     with session_for_write() as session:
         receiver = session.query(models.Receiver).get(receiver_id)
@@ -1141,8 +1156,7 @@ def receiver_delete(context, receiver_id):
         session.delete(receiver)
 
 
-def service_create(context, service_id, host=None, binary=None,
-                   topic=None):
+def service_create(service_id, host=None, binary=None, topic=None):
     with session_for_write() as session:
         time_now = timeutils.utcnow(True)
         svc = models.Service(id=service_id, host=host, binary=binary,
@@ -1152,7 +1166,7 @@ def service_create(context, service_id, host=None, binary=None,
         return svc
 
 
-def service_update(context, service_id, values=None):
+def service_update(service_id, values=None):
     with session_for_write() as session:
         service = session.query(models.Service).get(service_id)
         if not service:
@@ -1167,31 +1181,78 @@ def service_update(context, service_id, values=None):
         return service
 
 
-def service_delete(context, service_id):
+def service_delete(service_id):
     with session_for_write() as session:
         session.query(models.Service).filter_by(
             id=service_id).delete(synchronize_session='fetch')
 
 
-def service_get(context, service_id):
-    return model_query(context, models.Service).get(service_id)
+def service_get(service_id):
+    with session_for_read() as session:
+        return session.query(models.Service).get(service_id)
 
 
-def service_get_all(context):
-    return model_query(context, models.Service).all()
+def service_get_all():
+    with session_for_read() as session:
+        return session.query(models.Service).all()
+
+
+def gc_by_engine(engine_id):
+    # Get all actions locked by an engine
+    with session_for_write() as session:
+        q_actions = session.query(models.Action).filter_by(owner=engine_id)
+        timestamp = time.time()
+        for a in q_actions.all():
+            # Release all node locks
+            query = session.query(models.NodeLock).filter_by(action_id=a.id)
+            query.delete(synchronize_session=False)
+
+            # Release all cluster locks
+            for cl in session.query(models.ClusterLock).all():
+                res = _release_cluster_lock(session, cl, a.id, -1)
+                if not res:
+                    _release_cluster_lock(session, cl, a.id, 1)
+
+            # mark action failed and relase lock
+            _mark_failed(session, a.id, timestamp, reason="Engine failure")
 
 
 # HealthRegistry
+def registry_create(context, cluster_id, check_type, interval, params,
+                    engine_id, enabled=True):
+    with session_for_write() as session:
+        registry = models.HealthRegistry()
+        registry.cluster_id = cluster_id
+        registry.check_type = check_type
+        registry.interval = interval
+        registry.params = params
+        registry.engine_id = engine_id
+        registry.enabled = enabled
+        session.add(registry)
+        return registry
+
+
+def registry_update(context, cluster_id, values):
+    with session_for_write() as session:
+        query = session.query(models.HealthRegistry)
+        registry = query.filter_by(cluster_id=cluster_id).first()
+        if registry:
+            registry.update(values)
+            registry.save(session)
+
+
 def registry_claim(context, engine_id):
     with session_for_write() as session:
         engines = session.query(models.Service).all()
         svc_ids = [e.id for e in engines if not utils.is_service_dead(e)]
-        q_reg = session.query(models.HealthRegistry)
+        q_reg = session.query(models.HealthRegistry).with_lockmode('update')
         if svc_ids:
             q_reg = q_reg.filter(
                 models.HealthRegistry.engine_id.notin_(svc_ids))
-        q_reg.update({'engine_id': engine_id}, synchronize_session=False)
+
         result = q_reg.all()
+        q_reg.update({'engine_id': engine_id}, synchronize_session=False)
+
         return result
 
 
@@ -1204,16 +1265,11 @@ def registry_delete(context, cluster_id):
         session.delete(registry)
 
 
-def registry_create(context, cluster_id, check_type, interval, params,
-                    engine_id):
-    with session_for_write() as session:
-        registry = models.HealthRegistry()
-        registry.cluster_id = cluster_id
-        registry.check_type = check_type
-        registry.interval = interval
-        registry.params = params
-        registry.engine_id = engine_id
-        session.add(registry)
+def registry_get(context, cluster_id):
+    with session_for_read() as session:
+        registry = session.query(models.HealthRegistry).filter_by(
+            cluster_id=cluster_id).first()
+
         return registry
 
 

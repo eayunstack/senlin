@@ -242,17 +242,24 @@ class TestHealthManager(base.SenlinTestCase):
         self.assertEqual(consts.RPC_API_VERSION, self.hm.version)
         self.assertEqual(0, len(self.hm.rt['registries']))
 
+    @mock.patch.object(hm.HealthManager, "_load_runtime_registry")
+    def test__dummy_task(self, mock_load):
+        self.hm._dummy_task()
+        mock_load.assert_called_once_with()
+
     @mock.patch.object(hr.HealthRegistry, 'claim')
     def test__load_runtime_registry(self, mock_claim):
         mock_claim.return_value = [
             mock.Mock(cluster_id='CID1',
                       check_type=consts.NODE_STATUS_POLLING,
                       interval=12,
-                      params={'k1': 'v1'}),
+                      params={'k1': 'v1'},
+                      enabled=True),
             mock.Mock(cluster_id='CID2',
                       check_type=consts.NODE_STATUS_POLLING,
                       interval=34,
-                      params={'k2': 'v2'}),
+                      params={'k2': 'v2'},
+                      enabled=False),
             mock.Mock(cluster_id='CID3',
                       check_type='UNKNOWN_CHECK_TYPE',
                       interval=56,
@@ -292,7 +299,7 @@ class TestHealthManager(base.SenlinTestCase):
                 'interval': 34,
                 'params': {'k2': 'v2'},
                 'timer': timer2,
-                'enabled': True,
+                'enabled': False,
             },
             self.hm.registries[1])
 
@@ -423,7 +430,6 @@ class TestHealthManager(base.SenlinTestCase):
         x_timer = mock.Mock()
         mock_add_timer = self.patchobject(self.hm.TG, 'add_timer',
                                           return_value=x_timer)
-        mock_load = self.patchobject(self.hm, '_load_runtime_registry')
 
         # do it
         self.hm.start()
@@ -434,9 +440,8 @@ class TestHealthManager(base.SenlinTestCase):
                                             version=consts.RPC_API_VERSION)
         mock_get_rpc.assert_called_once_with(target, self.hm)
         x_rpc_server.start.assert_called_once_with()
-        mock_add_timer.assert_called_once_with(cfg.CONF.periodic_interval,
-                                               self.hm._dummy_task)
-        mock_load.assert_called_once_with()
+        mock_add_timer.assert_called_once_with(
+            cfg.CONF.periodic_interval, self.hm._dummy_task)
 
     @mock.patch.object(hr.HealthRegistry, 'create')
     def test_register_cluster(self, mock_reg_create):
@@ -454,10 +459,11 @@ class TestHealthManager(base.SenlinTestCase):
         self.hm.register_cluster(ctx,
                                  cluster_id='CLUSTER_ID',
                                  check_type=consts.NODE_STATUS_POLLING,
-                                 interval=50)
+                                 interval=50, enabled=True)
 
         mock_reg_create.assert_called_once_with(
-            ctx, 'CLUSTER_ID', consts.NODE_STATUS_POLLING, 50, {}, 'ENGINE_ID')
+            ctx, 'CLUSTER_ID', consts.NODE_STATUS_POLLING, 50, {}, 'ENGINE_ID',
+            enabled=True)
         mock_add_tm.assert_called_with(50, mock_poll, None, 'CLUSTER_ID')
         self.assertEqual(1, len(self.hm.registries))
 
@@ -482,8 +488,9 @@ class TestHealthManager(base.SenlinTestCase):
         mock_stop.assert_called_once_with(registry)
         mock_delete.assert_called_once_with(ctx, 'CLUSTER_ID')
 
+    @mock.patch.object(hr.HealthRegistry, 'update')
     @mock.patch.object(health_manager.HealthManager, '_start_check')
-    def test_enable_cluster(self, mock_start):
+    def test_enable_cluster(self, mock_start, mock_update):
         ctx = mock.Mock()
         entry1 = {'cluster_id': 'FAKE_ID', 'enabled': False}
         entry2 = {'cluster_id': 'ANOTHER_CLUSTER', 'enabled': False}
@@ -494,9 +501,11 @@ class TestHealthManager(base.SenlinTestCase):
         mock_start.assert_called_once_with(entry1)
         self.assertIn({'cluster_id': 'FAKE_ID', 'enabled': True},
                       self.hm.rt['registries'])
+        mock_update.assert_called_once_with(ctx, 'FAKE_ID', {'enabled': True})
 
+    @mock.patch.object(hr.HealthRegistry, 'update')
     @mock.patch.object(health_manager.HealthManager, '_stop_check')
-    def test_disable_cluster(self, mock_stop):
+    def test_disable_cluster(self, mock_stop, mock_update):
         ctx = mock.Mock()
         entry1 = {'cluster_id': 'FAKE_ID', 'enabled': True}
         entry2 = {'cluster_id': 'ANOTHER_CLUSTER', 'enabled': True}
@@ -507,3 +516,4 @@ class TestHealthManager(base.SenlinTestCase):
         mock_stop.assert_called_once_with(entry1)
         self.assertIn({'cluster_id': 'FAKE_ID', 'enabled': False},
                       self.hm.rt['registries'])
+        mock_update.assert_called_once_with(ctx, 'FAKE_ID', {'enabled': False})

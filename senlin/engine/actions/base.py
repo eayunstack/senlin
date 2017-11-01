@@ -17,6 +17,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import timeutils
 
+from senlin.common import consts
 from senlin.common import context as req_context
 from senlin.common import exception
 from senlin.common.i18n import _
@@ -289,28 +290,28 @@ class Action(object):
         ao.Action.delete(context, action_id)
 
     def signal(self, cmd):
-        '''Send a signal to the action.'''
+        """Send a signal to the action.
+
+        :param cmd: One of the command word defined in self.COMMANDS.
+        :returns: None
+        """
         if cmd not in self.COMMANDS:
             return
 
         if cmd == self.SIG_CANCEL:
-            expected_statuses = (self.INIT, self.WAITING, self.READY,
-                                 self.RUNNING)
+            expected = (self.INIT, self.WAITING, self.READY, self.RUNNING)
         elif cmd == self.SIG_SUSPEND:
-            expected_statuses = (self.RUNNING)
-        else:     # SIG_RESUME
-            expected_statuses = (self.SUSPENDED)
+            expected = (self.RUNNING)
+        else:  # SIG_RESUME
+            expected = (self.SUSPENDED)
 
-        if self.status not in expected_statuses:
-            reason = _("Action (%(action)s) is in unexpected status "
-                       "(%(actual)s) while expected status should be one of "
-                       "(%(expected)s).") % dict(action=self.id,
-                                                 expected=expected_statuses,
-                                                 actual=self.status)
-            EVENT.error(self.context, self, cmd, status_reason=reason)
+        if self.status not in expected:
+            LOG.error(_LE("Action (%(id)s) is in status (%(actual)s) while "
+                          "expected status should be one of (%(expected)s)."),
+                      dict(id=self.id[:8], expected=expected,
+                           actual=self.status))
             return
 
-        # TODO(Yanyan Hu): use DB session here
         ao.Action.signal(self.context, self.id, cmd)
 
     def execute(self, **kwargs):
@@ -353,11 +354,11 @@ class Action(object):
             ao.Action.abandon(self.context, self.id)
 
         if status == self.SUCCEEDED:
-            EVENT.info(self.context, self, self.action, status, reason)
+            EVENT.info(self, consts.PHASE_END, reason or 'SUCCEEDED')
         elif status == self.READY:
-            EVENT.warning(self.context, self, self.action, status, reason)
+            EVENT.warning(self, consts.PHASE_ERROR, reason or 'RETRY')
         else:
-            EVENT.error(self.context, self, self.action, status, reason)
+            EVENT.error(self, consts.PHASE_ERROR, reason or 'ERROR')
 
         self.status = status
         self.status_reason = reason
@@ -375,7 +376,7 @@ class Action(object):
     def _check_signal(self):
         # Check timeout first, if true, return timeout message
         if self.timeout is not None and self.is_timeout():
-            EVENT.debug(self.context, self, self.action, 'TIMEOUT')
+            EVENT.debug(self, consts.PHASE_ERROR, 'TIMEOUT')
             return self.RES_TIMEOUT
 
         result = ao.Action.signal_query(self.context, self.id)
@@ -397,23 +398,15 @@ class Action(object):
         :return: True if the policy checking can be continued, or False if the
                  policy checking should be aborted.
         """
-        # Abort policy checking if failures found
-        status = 'CHECK ERROR'
-        reason = _("Failed policy '%(name)s': %(reason)s."
-                   ) % {'name': name, 'reason': self.data['reason']}
+        reason = self.data['reason']
         if self.data['status'] == policy_mod.CHECK_OK:
-            method = EVENT.debug
-            status = 'CHECK OK'
-            reason = self.data['reason']
-        else:
-            method = EVENT.error
-
-        method(self.context, self, self.action, status, reason)
-
-        if self.data['status'] == policy_mod.CHECK_OK:
+            LOG.debug(self, 'check', reason)
             return True
-        else:
-            return False
+
+        reason = _("Failed policy '%(name)s': %(reason)s."
+                   ) % {'name': name, 'reason': reason}
+        EVENT.error(self, consts.PHASE_ERROR, reason)
+        return False
 
     def policy_check(self, cluster_id, target):
         """Check all policies attached to cluster and give result.
@@ -456,7 +449,7 @@ class Action(object):
                     self.data['status'] = policy_mod.CHECK_ERROR
                     self.data['reason'] = _('Policy %s cooldown is still '
                                             'in progress.') % policy.id
-                return
+                    return
 
             if method is not None:
                 method(cluster_id, self)
@@ -497,7 +490,6 @@ class Action(object):
         return action_dict
 
 
-# TODO(Yanyan Hu): Replace context parameter with session parameter
 def ActionProc(context, action_id):
     '''Action process.'''
 
@@ -507,8 +499,7 @@ def ActionProc(context, action_id):
         LOG.error(_LE('Action "%s" could not be found.'), action_id)
         return False
 
-    # TODO(Anyone): Remove context usage in event module
-    EVENT.info(action.context, action, action.action, 'START')
+    EVENT.info(action, consts.PHASE_START)
 
     reason = 'Action completed'
     success = True

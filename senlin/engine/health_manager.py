@@ -22,6 +22,9 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_service import service
 from oslo_service import threadgroup
+from oslo_utils import timeutils
+import six
+import time
 
 from senlin.common import consts
 from senlin.common import context
@@ -31,6 +34,22 @@ from senlin import objects
 from senlin.rpc import client as rpc_client
 
 LOG = logging.getLogger(__name__)
+
+
+def _chase_up(start_time, interval):
+    """Utility function to check if there are missed intervals.
+
+    :param start_time: A time object representing the starting time.
+    :param interval: An integer specifying the time interval in seconds.
+    :returns: Number of seconds to sleep before next round.
+    """
+    end_time = timeutils.utcnow(True)
+    elapsed = timeutils.delta_seconds(start_time, end_time)
+    # check if we have missed any intervals?
+    missed = int((elapsed - 0.0000001) / interval)
+    if missed >= 1:
+        LOG.warning("Poller missed %s intervals for checking", missed)
+    return (missed + 1) * interval - elapsed
 
 
 class NotificationEndpoint(object):
@@ -122,15 +141,73 @@ class HealthManager(service.Service):
         The task is here so that the service always has something to wait()
         on, or else the process will exit.
         """
-        pass
+        self._load_runtime_registry()
 
-    def _poll_cluster(self, cluster_id):
+    def _wait_for_action(self, ctx, action_id, timeout):
+        done = False
+        total_sleep = 0
+        action = objects.Action.get(self.ctx, action_id, project_safe=False)
+        ctx = context.get_service_context(user=action.user,
+                                          project=action.project)
+        ctx = context.RequestContext.from_dict(ctx)
+        while total_sleep < timeout:
+            action = self.rpc_client.action_get(ctx, action_id)
+            if action['status'] in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
+                if action['status'] == 'SUCCEEDED':
+                    done = True
+                break
+            time.sleep(2)
+            total_sleep += 2
+
+        if done:
+            return True, ""
+        elif total_sleep > timeout:
+            return False, "Timeout while polling cluster status"
+        else:
+            return False, "Cluster check action failed"
+
+    def _poll_cluster(self, cluster_id, timeout):
         """Routine to be executed for polling cluster status.
 
         :param cluster_id: The UUID of the cluster to be checked.
+        :param timeout: The maximum number of seconds to wait.
         :returns: Nothing.
         """
-        self.rpc_client.cluster_check(self.ctx, cluster_id)
+        start_time = timeutils.utcnow(True)
+        cluster = objects.Cluster.get(self.ctx, cluster_id, project_safe=False)
+        if not cluster:
+            LOG.warning("Cluster (%s) is not found.", cluster_id)
+            return _chase_up(start_time, timeout)
+
+        try:
+            ctx = context.get_service_context(user=cluster.user,
+                                              project=cluster.project)
+            ctx = context.RequestContext.from_dict(ctx)
+            action = self.rpc_client.cluster_check(ctx, cluster_id)
+        except Exception as ex:
+            LOG.warning("Failed in triggering 'cluster_check' RPC for "
+                        "'%(c)s': %(r)s",
+                        {'c': cluster_id, 'r': six.text_type(ex)})
+            return _chase_up(start_time, timeout)
+
+        # wait for action to complete
+        res, reason = self._wait_for_action(ctx, action['action'], timeout)
+        if not res:
+            LOG.warning("%s", reason)
+            return _chase_up(start_time, timeout)
+
+        # loop through nodes to trigger recovery
+        health_status = ['ACTIVE', 'PROTECTED']
+        nodes = objects.Node.get_all_by_cluster(ctx, cluster_id)
+        for node in nodes:
+            if node.status not in health_status:
+                LOG.info("Requesting node recovery: %s", node.id)
+                ctx = context.get_service_context(user=node.user,
+                                                  project=node.project)
+                ctx = context.RequestContext.from_dict(ctx)
+                self.rpc_client.node_recover(ctx, node.id)
+
+        return _chase_up(start_time, timeout)
 
     def _add_listener(self, cluster_id):
         """Routine to be executed for adding cluster listener.
@@ -152,24 +229,26 @@ class HealthManager(service.Service):
         :param entry: A dict containing the data associated with the cluster.
         :returns: An updated registry entry record.
         """
-        if entry['check_type'] == consts.NODE_STATUS_POLLING:
-            interval = min(entry['interval'], cfg.CONF.periodic_interval_max)
-            timer = self.TG.add_timer(interval, self._poll_cluster, None,
-                                      entry['cluster_id'])
+        cid = entry['cluster_id']
+        ctype = entry['check_type']
+        if ctype == consts.NODE_STATUS_POLLING:
+            interval = min(entry['interval'], cfg.CONF.check_interval_max)
+            timer = self.TG.add_dynamic_timer(self._poll_cluster,
+                                              None,  # initial_delay
+                                              None,  # check_interval_max
+                                              cid, interval)
             entry['timer'] = timer
-        elif entry['check_type'] == consts.VM_LIFECYCLE_EVENTS:
-            LOG.info(_LI("Start listening events for cluster (%s)."),
-                     entry['cluster_id'])
-            listener = self._add_listener(entry['cluster_id'])
+        elif ctype == consts.VM_LIFECYCLE_EVENTS:
+            LOG.info("Start listening events for cluster (%s).", cid)
+            listener = self._add_listener(cid)
             if listener:
                 entry['listener'] = listener
             else:
+                LOG.warning("Error creating listener for cluster %s", cid)
                 return None
         else:
-            LOG.warning(_LW("Cluster (%(id)s) check type (%(type)s) is "
-                            "invalid."),
-                        {'id': entry['cluster_id'],
-                         'type': entry['check_type']})
+            LOG.warning("Cluster %(id)s check type %(type)s is invalid.",
+                        {'id': cid, 'type': ctype})
             return None
 
         return entry
@@ -196,19 +275,21 @@ class HealthManager(service.Service):
         """Load the initial runtime registry with a DB scan."""
         db_registries = objects.HealthRegistry.claim(self.ctx, self.engine_id)
 
-        for cluster in db_registries:
+        for r in db_registries:
             entry = {
-                'cluster_id': cluster.cluster_id,
-                'check_type': cluster.check_type,
-                'interval': cluster.interval,
-                'params': cluster.params,
-                'enabled': True,
+                'cluster_id': r.cluster_id,
+                'check_type': r.check_type,
+                'interval': r.interval,
+                'params': r.params,
+                'enabled': r.enabled,
             }
 
-            LOG.info("Loading cluster %s for health monitoring",
-                     cluster.cluster_id)
+            LOG.info(_LI("Loading cluster %(c)s enalbed=%(e)s for "
+                         "health monitoring"),
+                     {'c': r.cluster_id, 'e': r.enabled})
 
-            entry = self._start_check(entry)
+            if r.enabled:
+                entry = self._start_check(entry)
             if entry:
                 self.rt['registries'].append(entry)
 
@@ -219,7 +300,6 @@ class HealthManager(service.Service):
         server = rpc.get_rpc_server(self.target, self)
         server.start()
         self.TG.add_timer(cfg.CONF.periodic_interval, self._dummy_task)
-        self._load_runtime_registry()
 
     def stop(self):
         self.TG.stop_timers()
@@ -234,7 +314,7 @@ class HealthManager(service.Service):
         return True
 
     def register_cluster(self, ctx, cluster_id, check_type, interval=None,
-                         params=None):
+                         params=None, enabled=True):
         r"""Register cluster for health checking.
 
         :param ctx: The context of notify request.
@@ -249,17 +329,19 @@ class HealthManager(service.Service):
 
         registry = objects.HealthRegistry.create(ctx, cluster_id, check_type,
                                                  interval, params,
-                                                 self.engine_id)
+                                                 self.engine_id,
+                                                 enabled=enabled)
 
         entry = {
             'cluster_id': registry.cluster_id,
             'check_type': registry.check_type,
             'interval': registry.interval,
             'params': registry.params,
-            'enabled': True
+            'enabled': registry.enabled
         }
+        if registry.enabled:
+            self._start_check(entry)
 
-        self._start_check(entry)
         self.rt['registries'].append(entry)
 
     def unregister_cluster(self, ctx, cluster_id):
@@ -274,19 +356,22 @@ class HealthManager(service.Service):
             if entry.get('cluster_id') == cluster_id:
                 self._stop_check(entry)
                 self.rt['registries'].pop(i)
-
         objects.HealthRegistry.delete(ctx, cluster_id)
 
     def enable_cluster(self, ctx, cluster_id, params=None):
         for c in self.rt['registries']:
             if c['cluster_id'] == cluster_id and not c['enabled']:
                 c['enabled'] = True
+                objects.HealthRegistry.update(ctx, cluster_id,
+                                              {'enabled': True})
                 self._start_check(c)
 
     def disable_cluster(self, ctx, cluster_id, params=None):
         for c in self.rt['registries']:
             if c['cluster_id'] == cluster_id and c['enabled']:
                 c['enabled'] = False
+                objects.HealthRegistry.update(ctx, cluster_id,
+                                              {'enabled': False})
                 self._stop_check(c)
 
 
@@ -326,21 +411,42 @@ def register(cluster_id, engine_id=None, **kwargs):
     params = kwargs.pop('params', {})
     interval = kwargs.pop('interval', cfg.CONF.periodic_interval)
     check_type = kwargs.pop('check_type', consts.NODE_STATUS_POLLING)
+    enabled = kwargs.pop('enabled', True)
     return notify(engine_id, 'register_cluster',
                   cluster_id=cluster_id,
                   interval=interval,
                   check_type=check_type,
-                  params=params)
+                  params=params,
+                  enabled=enabled)
 
 
-def unregister(cluster_id, engine_id=None):
-    return notify(engine_id, 'unregister_cluster', cluster_id=cluster_id)
+def unregister(cluster_id):
+    engine_id = get_manager_engine(cluster_id)
+    if engine_id:
+        return notify(engine_id, 'unregister_cluster', cluster_id=cluster_id)
+    return True
 
 
 def enable(cluster_id, **kwargs):
-    return notify(None, 'enable_cluster', cluster_id=cluster_id, params=kwargs)
+    engine_id = get_manager_engine(cluster_id)
+    if engine_id:
+        return notify(engine_id, 'enable_cluster', cluster_id=cluster_id,
+                      params=kwargs)
+    return False
 
 
 def disable(cluster_id, **kwargs):
-    return notify(None, 'disable_cluster', cluster_id=cluster_id,
-                  params=kwargs)
+    engine_id = get_manager_engine(cluster_id)
+    if engine_id:
+        return notify(cluster_id, 'disable_cluster', cluster_id=cluster_id,
+                      params=kwargs)
+    return False
+
+
+def get_manager_engine(cluster_id):
+    ctx = context.get_admin_context()
+
+    registry = objects.HealthRegistry.get(ctx, cluster_id)
+    if not registry:
+        return None
+    return registry.engine_id

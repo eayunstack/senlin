@@ -25,6 +25,7 @@ from senlin.api.openstack.v1 import policy_types
 from senlin.api.openstack.v1 import profile_types
 from senlin.api.openstack.v1 import profiles
 from senlin.api.openstack.v1 import receivers
+from senlin.api.openstack.v1 import services
 from senlin.api.openstack.v1 import version
 from senlin.api.openstack.v1 import webhooks
 
@@ -250,6 +251,10 @@ class API(wsgi.Router):
                                "/receivers/{receiver_id}",
                                action="get",
                                conditions={'method': 'GET'})
+            sub_mapper.connect("receiver_update",
+                               "/receivers/{receiver_id}",
+                               action="update",
+                               conditions={'method': 'PATCH'})
             sub_mapper.connect("receiver_delete",
                                "/receivers/{receiver_id}",
                                action="delete",
@@ -285,6 +290,17 @@ class API(wsgi.Router):
             sub_mapper.connect("build_info",
                                "/build-info",
                                action="build_info",
+                               conditions={'method': 'GET'})
+
+        super(API, self).__init__(mapper)
+
+        # Services
+        res = wsgi.Resource(services.ServiceController(conf))
+        with mapper.submapper(controller=res) as sub_mapper:
+
+            sub_mapper.connect("service_index",
+                               "/services",
+                               action="index",
                                conditions={'method': 'GET'})
 
         super(API, self).__init__(mapper)

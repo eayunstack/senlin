@@ -200,12 +200,14 @@ class EngineClient(object):
                                              count=count))
 
     def cluster_update(self, ctxt, identity, name=None, profile_id=None,
-                       metadata=None, timeout=None):
+                       metadata=None, timeout=None, profile_only=False):
         return self.call(ctxt, self.make_msg('cluster_update',
-                                             identity=identity, name=name,
+                                             identity=identity,
+                                             name=name,
                                              profile_id=profile_id,
                                              metadata=metadata,
-                                             timeout=timeout))
+                                             timeout=timeout,
+                                             profile_only=profile_only))
 
     def cluster_delete(self, ctxt, identity, cast=True):
         rpc_method = self.cast if cast else self.call
@@ -226,6 +228,16 @@ class EngineClient(object):
 
     def cluster_recover(self, ctxt, identity, params=None):
         return self.call(ctxt, self.make_msg('cluster_recover',
+                                             identity=identity,
+                                             params=params))
+
+    def cluster_suspend(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('cluster_suspend',
+                                             identity=identity,
+                                             params=params))
+
+    def cluster_resume(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('cluster_resume',
                                              identity=identity,
                                              params=params))
 
@@ -262,6 +274,26 @@ class EngineClient(object):
 
     def node_check(self, ctxt, identity, params=None):
         return self.call(ctxt, self.make_msg('node_check',
+                                             identity=identity,
+                                             params=params))
+
+    def node_remove(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_remove',
+                                             identity=identity,
+                                             params=params))
+
+    def node_set_protect(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_set_protect',
+                                             identity=identity,
+                                             params=params))
+
+    def node_remove_protect(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_remove_protect',
+                                             identity=identity,
+                                             params=params))
+
+    def node_reset_state(self, ctxt, identity, params=None):
+        return self.call(ctxt, self.make_msg('node_reset_state',
                                              identity=identity,
                                              params=params))
 
@@ -332,6 +364,12 @@ class EngineClient(object):
     def receiver_get(self, ctxt, identity, project_safe=True):
         return self.call(ctxt, self.make_msg('receiver_get', identity=identity,
                                              project_safe=project_safe))
+
+    def receiver_update(self, ctxt, receiver_id, name, action, params):
+        return self.call(ctxt,
+                         self.make_msg('receiver_update',
+                                       receiver_id=receiver_id, name=name,
+                                       action=action, params=params))
 
     def receiver_delete(self, ctxt, identity, cast=True):
         rpc_method = self.cast if cast else self.call

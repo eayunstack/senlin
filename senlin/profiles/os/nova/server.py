@@ -52,9 +52,9 @@ class ServerProfile(base.Profile):
     )
 
     NETWORK_KEYS = (
-        PORT, FIXED_IP, NETWORK,
+        PORT, FIXED_IP, NETWORK, SUBNET_ID, FLOATING_NETWORK,
     ) = (
-        'port', 'fixed_ip', 'network',
+        'port', 'fixed_ip', 'network', 'subnet_id', 'floating_network',
     )
 
     PERSONALITY_KEYS = (
@@ -165,11 +165,18 @@ class ServerProfile(base.Profile):
                     NETWORK: schema.String(
                         _('Name or ID of network to create a port on.'),
                     ),
+                    SUBNET_ID: schema.String(
+                        _('Name or ID of subnet for the port on which nodes '
+                          'can be connected.'),
+                    ),
                     PORT: schema.String(
                         _('Port ID to be used by the network.'),
                     ),
                     FIXED_IP: schema.String(
                         _('Fixed IP to be used by the network.'),
+                    ),
+                    FLOATING_NETWORK: schema.String(
+                        _('Name or ID of network to create a port on.'),
                     ),
                 },
             ),
@@ -329,6 +336,23 @@ class ServerProfile(base.Profile):
             else:
                 raise
 
+    def _validate_segroup(self, obj, name_or_id, reason=None):
+        try:
+            return self.network(obj).security_group_find(name_or_id)
+        except exc.InternalError as ex:
+            if reason == 'create':
+                raise exc.EResourceCreation(type='server',
+                                            message=six.text_type(ex))
+            elif reason == 'update':
+                raise exc.EResourceUpdate(type='server', id=obj.physical_id,
+                                          message=six.text_type(ex))
+            elif ex.code == 404:
+                msg = _("The specified %(k)s '%(v)s' could not be found."
+                        ) % {'k': self.SECURITY_GROUPS, 'v': name_or_id}
+                raise exc.InvalidSpec(message=msg)
+            else:
+                raise exc.InvalidSpec(message=six.text_type(ex))
+
     def do_validate(self, obj):
         """Validate if the spec has provided valid info for server creation.
 
@@ -375,10 +399,14 @@ class ServerProfile(base.Profile):
         if net_ident:
             try:
                 net = self.network(obj).network_get(net_ident)
-                if reason == 'update':
-                    result['net_id'] = net.id
-                else:
-                    result['uuid'] = net.id
+            except exc.InternalError as ex:
+                error = six.text_type(ex)
+
+        float_ident = network.get(self.FLOATING_NETWORK)
+        if float_ident:
+            try:
+                float_net = self.network(obj).floatingip_create(float_ident)
+                result['float_ip'] = float_net.floating_ip_address
             except exc.InternalError as ex:
                 error = six.text_type(ex)
 
@@ -412,6 +440,16 @@ class ServerProfile(base.Profile):
                     result['fixed_ips'] = [{'ip_address': fixed_ip}]
                 else:
                     result['fixed_ip'] = fixed_ip
+
+        # create port
+        subnet_id = network.get(self.SUBNET_ID)
+        if not error and subnet_id:
+            try:
+                port_info = self.network(obj).port_create(net.id, subnet_id)
+                port_id = port_info.id
+                result['port'] = port_id
+            except exc.InternalError as ex:
+                error = six.text_type(ex)
 
         if error:
             if reason == 'create':
@@ -493,15 +531,30 @@ class ServerProfile(base.Profile):
             kwargs['user_data'] = encodeutils.safe_decode(base64.b64encode(ud))
 
         networks = self.properties[self.NETWORKS]
+        float_ip = None
+        port_id = []
         if networks is not None:
             kwargs['networks'] = []
             for net_spec in networks:
                 net = self._validate_network(obj, net_spec, 'create')
+                if 'float_ip' in net:
+                    float_ip = net.pop('float_ip')
+                if 'port' in net:
+                    port_id.append(net['port'])
                 kwargs['networks'].append(net)
 
         secgroups = self.properties[self.SECURITY_GROUPS]
         if secgroups:
+            for seg in secgroups:
+                self._validate_segroup(obj, seg, 'create')
+
+            # nova boot instance default use default security group,
+            # so must boot configure security group
             kwargs['security_groups'] = [{'name': sg} for sg in secgroups]
+            # nova boot security group passing parameters not to take effect,
+            # so must use port_update update security_group
+            for port in port_id:
+                self._update_port_secgroup(obj, port, secgroups)
 
         if 'placement' in obj.data:
             if 'zone' in obj.data['placement']:
@@ -513,12 +566,20 @@ class ServerProfile(base.Profile):
                 hints.update({'group': group_id})
                 kwargs['scheduler_hints'] = hints
 
+        server = None
+        resource_id = None
         try:
             server = self.compute(obj).server_create(**kwargs)
             self.compute(obj).wait_for_server(server.id)
+            if float_ip:
+                self.compute(obj).server_floatingip_associate(server.id,
+                                                              float_ip)
             return server.id
         except exc.InternalError as ex:
-            raise exc.EResourceCreation(type='server', message=ex.message)
+            if server and server.id:
+                resource_id = server.id
+            raise exc.EResourceCreation(type='server', message=ex.message,
+                                        resource_id=resource_id)
 
     def do_delete(self, obj, **params):
         """Delete the physical resource associated with the specified node.
@@ -535,15 +596,36 @@ class ServerProfile(base.Profile):
 
         server_id = obj.physical_id
         ignore_missing = params.get('ignore_missing', True)
-        force = params.get('force', False)
+        force = params.get('force', True)
 
         try:
             driver = self.compute(obj)
+            server = driver.server_get(server_id)
+            if server.status != "ACTIVE":
+                driver.server_state_reset(server_id, 'active')
             if force:
                 driver.server_force_delete(server_id, ignore_missing)
             else:
                 driver.server_delete(server_id, ignore_missing)
             driver.wait_for_server_delete(server_id)
+            return True
+        except exc.InternalError as ex:
+            raise exc.EResourceDeletion(type='server', id=server_id,
+                                        message=six.text_type(ex))
+
+    def do_remove(self, obj, **params):
+        if not obj.physical_id:
+            return True
+
+        server_id = obj.physical_id
+        keys = params.get('keys', None)
+        try:
+            driver = self.compute(obj)
+            server = driver.server_get(server_id)
+            server_status = server.status
+            if server_status != "ACTIVE":
+                driver.server_state_reset(server_id, 'active')
+            driver.server_metadata_delete(server_id, keys)
             return True
         except exc.InternalError as ex:
             raise exc.EResourceDeletion(type='server', id=server_id,
@@ -831,6 +913,22 @@ class ServerProfile(base.Profile):
             self._create_interfaces(obj, networks_create)
         return
 
+    def _update_port_secgroup(self, obj, port, secgroups, reason='update'):
+        """Updating server port security group
+        :param obj: the server to operate on
+        :param port: the instance fix ip bind port
+        :param secgroups: the instace security group
+        :returns: error if the operation appear error
+        """
+        try:
+            self.network(obj).port_update(port, secgroups)
+        except exc.InternalError as ex:
+            if reason == 'update':
+                raise exc.EResourceUpdate(type='server', id=obj.physical_id,
+                                          message=six.text_type(ex))
+            else:
+                raise exc.InvalidSpec(message=six.text_type(ex))
+
     def do_update(self, obj, new_profile=None, **params):
         """Perform update on the server.
 
@@ -911,8 +1009,13 @@ class ServerProfile(base.Profile):
         if server is None:
             return {}
         server_data = server.to_dict()
+        if 'id' in server_data['image']:
+            image_id = server_data['image']['id']
+        else:
+            image_id = server_data['image']
         details = {
-            'image': server_data['image']['id'],
+            'image': image_id,
+            'volumes_attached': server_data['attached_volumes'],
             'flavor': server_data['flavor']['id'],
         }
         for key in known_keys:
@@ -939,6 +1042,10 @@ class ServerProfile(base.Profile):
         if 'security_groups' in server_data:
             for sg in server_data['security_groups']:
                 sgroups.append(sg['name'])
+        # when we have multiple nics the info will include the
+        # security groups N times where N == number of nics. Be nice
+        # and only display it once.
+        sgroups = list(set(sgroups))
         if len(sgroups) == 0:
             details['security_groups'] = ''
         elif len(sgroups) == 1:
@@ -964,8 +1071,16 @@ class ServerProfile(base.Profile):
             return False
 
         keys = ['cluster_id', 'cluster_node_index']
-        self.compute(obj).server_metadata_delete(obj.physical_id, keys)
-        return super(ServerProfile, self).do_leave(obj)
+        try:
+            driver = self.compute(obj)
+            server = driver.server_get(obj.physical_id)
+            if server.status != "ACTIVE":
+                driver.server_state_reset(obj.physical_id, 'active')
+            self.compute(obj).server_metadata_delete(obj.physical_id, keys)
+            return super(ServerProfile, self).do_leave(obj)
+        except exc.InternalError as ex:
+            raise exc.EResourceDeletion(type='server', id=obj.physical_id,
+                                        message=six.text_type(ex))
 
     def do_rebuild(self, obj):
         if not obj.physical_id:

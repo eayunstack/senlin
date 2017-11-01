@@ -23,7 +23,7 @@ class DBAPIRegistryTest(base.SenlinTestCase):
         super(DBAPIRegistryTest, self).setUp()
         self.ctx = utils.dummy_context()
 
-        db_api.service_create(self.ctx, 'SERVICE_ID')
+        db_api.service_create('SERVICE_ID')
 
     def _create_registry(self, cluster_id, check_type, interval, params,
                          engine_id):
@@ -46,6 +46,20 @@ class DBAPIRegistryTest(base.SenlinTestCase):
         self.assertEqual(registry.params, ret_registry.params)
         self.assertEqual(registry.engine_id, ret_registry.engine_id)
 
+    def test_registry_update(self):
+        self._create_registry(cluster_id='FAKE_ID',
+                              check_type='NODE_STATUS_POLLING',
+                              interval=60,
+                              params={},
+                              engine_id='DEAD_ENGINE')
+
+        registries = db_api.registry_claim(self.ctx, engine_id='ENGINE_ID')
+        self.assertTrue(registries[0].enabled)
+
+        db_api.registry_update(self.ctx, 'FAKE_ID', {'enabled': False})
+        registries = db_api.registry_claim(self.ctx, engine_id='NEW_ENGINE_ID')
+        self.assertFalse(registries[0].enabled)
+
     def test_registry_claim(self):
         for i in range(2):
             cluster_id = 'cluster-%s' % i
@@ -57,12 +71,12 @@ class DBAPIRegistryTest(base.SenlinTestCase):
 
         registries = db_api.registry_claim(self.ctx, engine_id='ENGINE_ID')
         self.assertEqual(2, len(registries))
-        self.assertEqual('ENGINE_ID', registries[0].engine_id)
-        self.assertEqual('ENGINE_ID', registries[1].engine_id)
+        self.assertEqual('DEAD_ENGINE', registries[0].engine_id)
+        self.assertEqual('DEAD_ENGINE', registries[1].engine_id)
 
     @mock.patch.object(db_utils, 'is_service_dead')
     def test_registry_claim_with_dead_engine(self, mock_check):
-        db_api.service_create(self.ctx, 'SERVICE_ID_DEAD')
+        db_api.service_create('SERVICE_ID_DEAD')
         self._create_registry(
             cluster_id='CLUSTER_1', check_type='NODE_STATUS_POLLING',
             interval=60, params={}, engine_id='SERVICE_ID')
@@ -75,7 +89,7 @@ class DBAPIRegistryTest(base.SenlinTestCase):
         registries = db_api.registry_claim(self.ctx, engine_id='ENGINE_ID')
 
         self.assertEqual(1, len(registries))
-        self.assertEqual('ENGINE_ID', registries[0].engine_id)
+        self.assertEqual('SERVICE_ID_DEAD', registries[0].engine_id)
 
     def test_registry_delete(self):
         registry = self._create_registry('CLUSTER_ID',
@@ -86,3 +100,19 @@ class DBAPIRegistryTest(base.SenlinTestCase):
         db_api.registry_delete(self.ctx, 'CLUSTER_ID')
         self.assertEqual([], db_api.registry_claim(self.ctx,
                                                    registry.engine_id))
+
+    def test_registry_get(self):
+        obj = self._create_registry(cluster_id='FAKE_ID',
+                                    check_type='NODE_STATUS_POLLING',
+                                    interval=60,
+                                    params={},
+                                    engine_id='DEAD_ENGINE')
+
+        registry = db_api.registry_get(self.ctx, 'FAKE_ID')
+
+        self.assertEqual(registry.id, obj.id)
+        self.assertEqual(registry.cluster_id, obj.cluster_id)
+        self.assertEqual(registry.check_type, obj.check_type)
+        self.assertEqual(registry.interval, obj.interval)
+        self.assertEqual(registry.params, obj.params)
+        self.assertEqual(registry.engine_id, obj.engine_id)

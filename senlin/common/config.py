@@ -40,7 +40,10 @@ engine_opts = [
                help=_('Seconds between running periodic tasks.')),
     cfg.IntOpt('periodic_interval_max',
                default=120,
-               help='Seconds between periodic tasks to be called'),
+               help='Maximum seconds between periodic tasks to be called'),
+    cfg.IntOpt('check_interval_max',
+               default=3600,
+               help='Maximum seconds between cluster check to be called'),
     cfg.IntOpt('periodic_fuzzy_delay',
                default=10,
                help='Range of seconds to randomly delay when starting the'
@@ -84,11 +87,15 @@ engine_opts = [
     cfg.BoolOpt('name_unique',
                 default=False,
                 help=_('Flag to indicate whether to enforce unique names for '
-                       'Senlin objects belonging to the same project.'))
+                       'Senlin objects belonging to the same project.')),
+    cfg.IntOpt('service_down_time',
+               default=60,
+               help='Maximum time since last check-in for a service to be '
+                    'considered up'),
 ]
 cfg.CONF.register_opts(engine_opts)
 
-# DEFAULT, cloud_backend
+# DEFAULT, host
 rpc_opts = [
     cfg.StrOpt('host',
                default=socket.gethostname(),
@@ -104,6 +111,13 @@ cloud_backend_opts = [
                default='openstack',
                help=_('Default cloud backend to use.'))]
 cfg.CONF.register_opts(cloud_backend_opts)
+
+# DEFAULT, event dispatchers
+dispatcher_opts = [
+    cfg.MultiStrOpt("dispatchers",
+                    default=['database', 'message'],
+                    help=_("Event dispatchers to enable"))]
+cfg.CONF.register_opts(dispatcher_opts)
 
 authentication_group = cfg.OptGroup('authentication')
 authentication_opts = [

@@ -190,6 +190,14 @@ class ActionInProgress(SenlinException):
     msg_fmt = _("The %(type)s %(id)s is in status %(status)s.")
 
 
+class ActionForbidden(SenlinException):
+    msg_fmt = _("%(message)s")
+
+
+class ForbiddenAction(SenlinException):
+    msg_fmt = _("The %(type)s %(id)s is in status %(status)s.")
+
+
 class NodeNotOrphan(SenlinException):
     msg_fmt = _("%(message)s")
 
@@ -223,6 +231,10 @@ class TrustNotFound(InternalError):
 
 class EResourceCreation(InternalError):
     # Used when creating resources in other services
+    def __init__(self, **kwargs):
+        self.resource_id = kwargs.pop('resource_id', None)
+        super(EResourceCreation, self).__init__(
+            resource_id=self.resource_id, **kwargs)
     msg_fmt = _("Failed in creating %(type)s: %(message)s.")
 
 

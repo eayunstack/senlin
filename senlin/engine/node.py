@@ -34,10 +34,10 @@ class Node(object):
 
     statuses = (
         INIT, ACTIVE, ERROR, WARNING, CREATING, UPDATING, DELETING,
-        RECOVERING
+        RECOVERING, PROTECTED
     ) = (
         'INIT', 'ACTIVE', 'ERROR', 'WARNING', 'CREATING', 'UPDATING',
-        'DELETING', 'RECOVERING'
+        'DELETING', 'RECOVERING', 'PROTECTED'
     )
 
     def __init__(self, name, profile_id, cluster_id=None, context=None,
@@ -261,7 +261,9 @@ class Node(object):
         try:
             physical_id = pb.Profile.create_object(context, self)
         except exc.EResourceCreation as ex:
-            self.set_status(context, self.ERROR, six.text_type(ex))
+            physical_id = ex.resource_id
+            self.set_status(context, self.ERROR, six.text_type(ex),
+                            physical_id=physical_id)
             return False
 
         self.set_status(context, self.ACTIVE, _('Creation succeeded'),
@@ -272,6 +274,10 @@ class Node(object):
         if not self.physical_id:
             no.Node.delete(context, self.id)
             return True
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete delete."
+                        % (self.id[:8], self.status))
+            return False
 
         # TODO(Qiming): check if actions are working on it and can be canceled
         self.set_status(context, self.DELETING, 'Deletion in progress')
@@ -279,6 +285,23 @@ class Node(object):
             # The following operation always return True unless exception
             # is thrown
             pb.Profile.delete_object(context, self)
+            no.Node.delete(context, self.id)
+            return True
+        except exc.EResourceDeletion as ex:
+            self.set_status(context, self.ERROR, six.text_type(ex))
+            return False
+
+    def do_remove(self, context):
+        metadata_keys = ['cluster_node_id']
+        if self.cluster_id:
+            metadata_keys += ['cluster_id', 'cluster_node_index']
+
+        params = {
+            'keys': metadata_keys
+        }
+
+        try:
+            pb.Profile.remove_object(context, self, **params)
             no.Node.delete(context, self.id)
             return True
         except exc.EResourceDeletion as ex:
@@ -293,6 +316,10 @@ class Node(object):
                             like 'new_profile_id', 'name', 'role', 'metadata'.
         """
         if not self.physical_id:
+            return False
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete update."
+                        % (self.id[:8], self.status))
             return False
 
         self.set_status(context, self.UPDATING, 'Update in progress')
@@ -348,6 +375,11 @@ class Node(object):
         if self.cluster_id == '':
             return True
 
+        if self.status == self.PROTECTED:
+            LOG.warning("Node: %s in %s, Con't complete leave."
+                        % (self.id[:8], self.status))
+            return False
+
         res = pb.Profile.leave_cluster(context, self)
         if res:
             timestamp = timeutils.utcnow(True)
@@ -360,15 +392,19 @@ class Node(object):
             return False
 
     def do_check(self, context):
-        if not self.physical_id:
-            return False
+        if not self.physical_id and self.status == self.ERROR:
+            return True
 
-        res = True
         try:
             res = pb.Profile.check_object(context, self)
         except exc.EResourceOperation as ex:
-            self.set_status(context, self.ERROR, six.text_type(ex))
-            return False
+            if "No Server found" in six.text_type(ex):
+                self.set_status(context, self.ERROR, six.text_type(ex),
+                                physical_id=None)
+                return True
+            else:
+                self.set_status(context, self.ERROR, six.text_type(ex))
+                return False
 
         if res:
             self.set_status(context, self.ACTIVE,
@@ -377,15 +413,28 @@ class Node(object):
             self.set_status(context, self.ERROR,
                             _("Check: Node is not ACTIVE."))
 
-        return res
+        return True
+
+    def do_set_protect(self, context):
+        self.set_status(context, self.PROTECTED, _('Node set protect.'))
+
+        return True, _('Node set protect.')
+
+    def do_remove_protect(self, context):
+        self.set_status(context, self.ACTIVE, _('Node remove protect.'))
+
+        return True, _('Node remove protect.')
+
+    def do_reset_state(self, context):
+        self.set_status(context, self.ERROR, _('Node reset state.'))
+
+        return True, _('Node reset state.')
 
     def do_recover(self, context, **options):
         """recover a node.
 
         This function is supposed to be invoked from a NODE_RECOVER action.
         """
-        if not self.physical_id:
-            return False
 
         self.set_status(context, self.RECOVERING,
                         reason=_('Recover in progress'))

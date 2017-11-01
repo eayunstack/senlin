@@ -32,6 +32,7 @@ class ClusterData(object):
     def __init__(self, data):
         self.name = data.get(consts.CLUSTER_NAME, None)
         self.profile = data.get(consts.CLUSTER_PROFILE, None)
+        self.profile_only = data.get(consts.CLUSTER_PROFILE_ONLY, False)
         self.metadata = data.get(consts.CLUSTER_METADATA, None)
 
         self.desired_capacity = data.get(consts.CLUSTER_DESIRED_CAPACITY, None)
@@ -76,11 +77,15 @@ class ClusterData(object):
                     "equal to its desired capacity.")
             raise exc.HTTPBadRequest(msg)
 
-        if self.max_size is not None and self.max_size >= 0:
-            if self.max_size < self.desired_capacity:
+        if self.max_size is not None:
+            if (self.max_size > 0 and self.max_size < self.desired_capacity)\
+                    or (self.max_size < -1):
                 msg = _("Cluster max_size, if specified, must be greater than "
                         "or equal to its desired capacity. Setting max_size "
                         "to -1 means no upper limit on cluster size.")
+                raise exc.HTTPBadRequest(msg)
+            elif self.max_size == 0:
+                msg = _("Cluster don't allow max_size equal to 0")
                 raise exc.HTTPBadRequest(msg)
 
     def validate_for_update(self):
@@ -118,11 +123,11 @@ class ClusterController(wsgi.Controller):
     SUPPORTED_ACTIONS = (
         ADD_NODES, DEL_NODES, SCALE_OUT, SCALE_IN, RESIZE,
         POLICY_ATTACH, POLICY_DETACH, POLICY_UPDATE,
-        CHECK, RECOVER
+        CHECK, RECOVER, SUSPEND, RESUME
     ) = (
         'add_nodes', 'del_nodes', 'scale_out', 'scale_in', 'resize',
         'policy_attach', 'policy_detach', 'policy_update',
-        'check', 'recover'
+        'check', 'recover', 'suspend', 'resume'
     )
 
     @util.policy_enforce
@@ -199,8 +204,8 @@ class ClusterController(wsgi.Controller):
         data.validate_for_update()
 
         cluster = self.rpc_client.cluster_update(
-            req.context, cluster_id, data.name, data.profile, data.metadata,
-            data.timeout)
+            req.context, cluster_id, data.name, data.profile,
+            data.metadata, data.timeout, data.profile_only)
         action_id = cluster.pop('action')
         result = {
             'cluster': cluster,
@@ -351,6 +356,14 @@ class ClusterController(wsgi.Controller):
                 raise exc.HTTPBadRequest(msg)
             res = self.rpc_client.cluster_check(req.context, cluster_id,
                                                 params=params)
+        elif this_action == self.SUSPEND:
+            params = body.get(this_action)
+            res = self.rpc_client.cluster_suspend(req.context, cluster_id,
+                                                  params=params)
+        elif this_action == self.RESUME:
+            params = body.get(this_action)
+            res = self.rpc_client.cluster_resume(req.context, cluster_id,
+                                                 params=params)
         else:
             # this_action == self.RECOVER:
             params = body.get(this_action)

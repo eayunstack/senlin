@@ -10,9 +10,19 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import copy
+
+from oslo_config import cfg
 from oslo_serialization import jsonutils
+from oslo_utils import strutils
 from oslo_versionedobjects import fields
+import re
 import six
+
+from senlin.common import consts
+from senlin.common.i18n import _
+
+CONF = cfg.CONF
 
 # Field alias for code readability
 BooleanField = fields.BooleanField
@@ -22,7 +32,97 @@ FloatField = fields.FloatField
 UUIDField = fields.UUIDField
 DateTimeField = fields.DateTimeField
 ListOfStringsField = fields.ListOfStringsField
-ObjectField = fields.ObjectField
+ListOfEnumField = fields.ListOfEnumField
+
+
+class Boolean(fields.FieldType):
+    # NOTE: The following definition is much more stricter than the oslo
+    #       version. Also note that the treatment of default values here:
+    #       we are using the user specified default value when invoking
+    #       the 'bool_from_string' until function.
+
+    def __init__(self, default=False):
+        super(Boolean, self).__init__()
+        self._default = default
+
+    def coerce(self, obj, attr, value):
+        return strutils.bool_from_string(value, strict=True,
+                                         default=self._default)
+
+    def get_schema(self):
+        return {'type': ['boolean']}
+
+
+# TODO(Qiming): remove this when oslo patch is released
+# https://review.openstack.org/#/c/360095
+class NonNegativeInteger(fields.FieldType):
+
+    @staticmethod
+    def coerce(obj, attr, value):
+        v = int(value)
+        if v < 0:
+            err = _("Value must be >= 0 for field '%s'.") % attr
+            raise ValueError(err)
+        return v
+
+    def get_schema(self):
+        return {
+            'type': ['integer', 'string'],
+            'minimum': 0
+        }
+
+
+# TODO(Qiming): remove this when oslo patch is released
+# i.e. global requirements bump to 1.17.0
+class Object(fields.Object):
+
+    def get_schema(self):
+        from oslo_versionedobjects import base as obj_base
+        obj_classes = obj_base.VersionedObjectRegistry.obj_classes()
+        if self._obj_name in obj_classes:
+            cls = obj_classes[self._obj_name][0]
+            namespace_key = cls._obj_primitive_key('namespace')
+            name_key = cls._obj_primitive_key('name')
+            version_key = cls._obj_primitive_key('version')
+            data_key = cls._obj_primitive_key('data')
+            changes_key = cls._obj_primitive_key('changes')
+            field_schemas = {key: field.get_schema()
+                             for key, field in cls.fields.items()}
+            required_fields = [key for key, field in sorted(cls.fields.items())
+                               if not field.nullable]
+
+            schema = {
+                'type': 'object',
+                'properties': {
+                    namespace_key: {
+                        'type': 'string',
+                    },
+                    name_key: {
+                        'type': 'string',
+                    },
+                    version_key: {
+                        'type': 'string',
+                    },
+                    changes_key: {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                        }
+                    },
+                    data_key: {
+                        'type': 'object',
+                        'description': 'fields of %s' % self._obj_name,
+                        'properties': field_schemas,
+                        'required': required_fields,
+                        'additionalProperties': False,
+                    },
+                },
+                'required': [namespace_key, name_key, version_key, data_key],
+            }
+
+            return schema
+        else:
+            return {}
 
 
 class Json(fields.FieldType):
@@ -52,51 +152,285 @@ class Json(fields.FieldType):
         return {'type': ['object']}
 
 
+class NotificationPriority(fields.Enum):
+
+    # The priorities here are derived from oslo_messaging.notify.notifier
+    ALL = consts.NOTIFICATION_PRIORITIES
+
+    def __init__(self):
+        super(NotificationPriority, self).__init__(self.ALL)
+
+
+class NotificationPhase(fields.Enum):
+
+    ALL = consts.NOTIFICATION_PHASES
+
+    def __init__(self):
+        super(NotificationPhase, self).__init__(self.ALL)
+
+
+class NotificationAction(fields.Enum):
+
+    # This is a combination of cluster actions and node actions
+    # TODO(Anyone): Move this definition to consts module
+    ALL = (
+        CLUSTER_CREATE, CLUSTER_DELETE, CLUSTER_UPDATE,
+        CLUSTER_ADD_NODES, CLUSTER_DEL_NODES, CLUSTER_REPLACE_NODES,
+        CLUSTER_SCALE_OUT, CLUSTER_SCALE_IN, CLUSTER_RESIZE,
+        CLUSTER_ATTACH_POLICY, CLUSTER_DETACH_POLICY, CLUSTER_UPDATE_POLICY,
+        CLUSTER_CHECK, CLUSTER_RECOVER, CLUSTER_SUSPEND, CLUSTER_RESUME,
+        NODE_CREATE, NODE_DELETE, NODE_UPDATE, NODE_CHECK, NODE_RECOVER,
+        NODE_SET_PROTECT, NODE_REMOVE_PROTECT, NODE_REMOVE,
+        NODE_JOIN, NODE_LEAVE, NODE_RESET_STATE
+    ) = (
+        'create', 'delete', 'update',
+        'add_nodes', 'del_nodes', 'replace_nodes',
+        'scale_out', 'scale_in', 'resize',
+        'attach_policy', 'detach_policy', 'update_policy',
+        'check', 'recover', 'suspend', 'resume',
+        'create', 'delete', 'update', 'check', 'recover',
+        'set_protect', 'remove_protect', 'remove',
+        'join', 'leave', 'reset_state'
+    )
+
+    def __init__(self):
+        super(NotificationAction, self).__init__(self.ALL)
+
+
+class Name(fields.String):
+
+    def __init__(self, min_len=1, max_len=255):
+        super(Name, self).__init__()
+        self.min_len = min_len
+        self.max_len = max_len
+
+    def coerce(self, obj, attr, value):
+        err = None
+        if len(value) < self.min_len:
+            err = _("The value for the %(attr)s field must be at least "
+                    "%(count)d characters long."
+                    ) % {'attr': attr, 'count': self.min_len}
+        elif len(value) > self.max_len:
+            err = _("The value for the %(attr)s field must be less than "
+                    "%(count)d characters long."
+                    ) % {'attr': attr, 'count': self.max_len}
+        else:
+            # NOTE: This is pretty restrictive. We can relax it later when
+            # there are requests to do so
+            regex = re.compile('^[a-zA-Z\d\.\_\~-]*$', re.IGNORECASE)
+            if not regex.search(value):
+                err = _("The value for the '%(attr)s' (%(value)s) contains "
+                        "illegal characters."
+                        ) % {'attr': attr, 'value': value}
+
+        if err:
+            raise ValueError(err)
+
+        return super(Name, self).coerce(obj, attr, value)
+
+    def get_schema(self):
+        return {
+            'type': ['string'],
+            'minLength': self.min_len,
+            'maxLength': self.max_len
+        }
+
+
+class Capacity(fields.Integer):
+
+    def __init__(self, minimum=0, maximum=None):
+        super(Capacity, self).__init__()
+        CONF.import_opt("max_nodes_per_cluster", "senlin.common.config")
+
+        if minimum > CONF.max_nodes_per_cluster:
+            err = _("The value of 'minimum' cannot be greater than the global "
+                    "constraint (%(m)d).") % {'m': CONF.max_nodes_per_cluster}
+            raise ValueError(err)
+        self.minimum = minimum
+
+        if maximum is not None:
+            if maximum < minimum:
+                err = _("The value of 'maximum' must be greater than or equal "
+                        "to that of the 'minimum' specified.")
+                raise ValueError(err)
+
+            if maximum > CONF.max_nodes_per_cluster:
+                err = _("The value of 'maximum' cannot be greater than the "
+                        "global constraint (%(m)d)."
+                        ) % {'m': CONF.max_nodes_per_cluster}
+                raise ValueError(err)
+
+            self.maximum = maximum
+        else:
+            self.maximum = CONF.max_nodes_per_cluster
+
+    def coerce(self, obj, attr, value):
+        value = super(Capacity, self).coerce(obj, attr, value)
+
+        err = None
+        if value < self.minimum:
+            err = _("The value for the %(a)s field must be greater than or "
+                    "equal to %(n)d.") % {'a': attr, 'n': self.minimum}
+        elif value > self.maximum:
+            err = _("The value for the %(a)s field must be less than or equal "
+                    "to %(n)d.") % {'a': attr, 'n': self.maximum}
+        if err:
+            raise ValueError(err)
+
+        return value
+
+    def get_schema(self):
+        return {
+            'type': ['integer', 'string'],
+            'minimum': self.minimum,
+            'maximum': self.maximum,
+            'pattern': '^[0-9]*$',
+        }
+
+
+class Sort(fields.String):
+
+    def __init__(self, valid_keys):
+        super(Sort, self).__init__()
+        self.valid_keys = valid_keys
+
+    def coerce(self, obj, attr, value):
+        for s in value.split(','):
+            s_key, _sep, s_dir = s.partition(':')
+            err = None
+            if not s_key:
+                err = _("missing sort key for '%s'.") % attr
+                raise ValueError(err)
+
+            if s_key not in self.valid_keys:
+                err = _("unsupported sort key '%(value)s' for '%(attr)s'."
+                        ) % {'attr': attr, 'value': s_key}
+
+            if s_dir and s_dir not in ('asc', 'desc'):
+                err = _("unsupported sort dir '%(value)s' for '%(attr)s'."
+                        ) % {'attr': attr, 'value': s_dir}
+
+            if err:
+                raise ValueError(err)
+
+        return super(Sort, self).coerce(obj, attr, value)
+
+    def get_schema(self):
+        return {
+            'type': ['string'],
+        }
+
+
+class IdentityList(fields.List):
+
+    def __init__(self, element_type, min_items=0, unique=True, nullable=False,
+                 **kwargs):
+        super(IdentityList, self).__init__(element_type, **kwargs)
+        self.min_items = min_items
+        self.unique_items = unique
+        self.nullable = nullable
+
+    def coerce(self, obj, attr, value):
+        res = super(IdentityList, self).coerce(obj, attr, value)
+        if len(res) < self.min_items:
+            raise ValueError(_("Value for '%(attr)s' must have at least "
+                               "%(num)s item(s).") %
+                             {'attr': attr, 'num': self.min_items})
+        if len(set(res)) != len(res) and self.unique_items:
+            raise ValueError(_("Items for '%(attr)s' must be unique") %
+                             {'attr': attr})
+        return res
+
+    def get_schema(self):
+        schema = super(IdentityList, self).get_schema()
+        if self.nullable:
+            schema['type'].append('null')
+        schema['minItems'] = self.min_items
+        schema['uniqueItems'] = self.unique_items
+        return schema
+
+
+class BaseEnum(fields.Enum):
+
+    def __init__(self, **kwargs):
+        super(BaseEnum, self).__init__(valid_values=self.__class__.ALL)
+
+    def get_schema(self):
+        # TODO(Anyone): remove this override when the following patch is
+        # merged and released.
+        # https://review.openstack.org/389061
+        schema = {
+            'type': ['string'],
+            'enum': self._valid_values
+        }
+        return schema
+
+
+class AdjustmentType(BaseEnum):
+
+    ALL = (
+        EXACT_CAPACITY, CHANGE_IN_CAPACITY, CHANGE_IN_PERCENTAGE,
+    ) = (
+        'EXACT_CAPACITY', 'CHANGE_IN_CAPACITY', 'CHANGE_IN_PERCENTAGE',
+    )
+
+
+class ClusterActionName(BaseEnum):
+
+    ALL = consts.ACTION_NAMES
+
+
+class ClusterStatus(BaseEnum):
+
+    ALL = consts.CLUSTER_STATUSES
+
+
+class NodeStatus(BaseEnum):
+
+    ALL = consts.NODE_STATUSES
+
+
+class ActionStatus(BaseEnum):
+
+    ALL = consts.ACTION_STATUSES
+
+
+class ReceiverType(BaseEnum):
+
+    ALL = consts.RECEIVER_TYPES
+
+
+class UniqueDict(fields.Dict):
+
+    def coerce(self, obj, attr, value):
+        res = super(UniqueDict, self).coerce(obj, attr, value)
+        new_nodes = res.values()
+        if len(new_nodes) != len(set(new_nodes)):
+            raise ValueError(_("Map contains duplicated values"))
+        return res
+
+
+# TODO(Qiming): remove this when oslo patch is released
+# https://review.openstack.org/#/c/360095
+class NonNegativeIntegerField(fields.AutoTypedField):
+
+    AUTO_TYPE = NonNegativeInteger()
+
+
+class ObjectField(fields.AutoTypedField):
+
+    def __init__(self, objtype, subclasses=False, **kwargs):
+        self.AUTO_TYPE = Object(objtype, subclasses)
+        self.objname = objtype
+        super(ObjectField, self).__init__(**kwargs)
+
+
 class JsonField(fields.AutoTypedField):
     AUTO_TYPE = Json()
 
 
 class ListField(fields.AutoTypedField):
     AUTO_TYPE = fields.List(fields.FieldType())
-
-
-class NotificationPriority(fields.Enum):
-
-    ALL = (
-        AUDIT, CRITICAL, DEBUG, INFO, ERROR, SAMPLE, WARN,
-    ) = (
-        'audit', 'critical', 'debug', 'info', 'error', 'sample', 'warn',
-    )
-
-    def __init__(self):
-        super(NotificationPriority, self).__init__(
-            valid_values=NotificationPriority.ALL)
-
-
-class NotificationPhase(fields.Enum):
-
-    ALL = (
-        START, END, ERROR,
-    ) = (
-        'start', 'end', 'error',
-    )
-
-    def __init__(self):
-        super(NotificationPhase, self).__init__(
-            valid_values=NotificationPhase.ALL)
-
-
-class NotificationAction(fields.Enum):
-
-    ALL = (
-        UPDATE,
-    ) = (
-        'update',
-    )
-
-    def __init__(self):
-        super(NotificationAction, self).__init__(
-            valid_values=NotificationAction.ALL)
 
 
 class NotificationPriorityField(fields.BaseEnumField):
@@ -109,3 +443,89 @@ class NotificationPhaseField(fields.BaseEnumField):
 
 class NotificationActionField(fields.BaseEnumField):
     AUTO_TYPE = NotificationAction()
+
+
+class NameField(fields.AutoTypedField):
+
+    AUTO_TYPE = Name()
+
+
+class CapacityField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, nullable=False, default=None, minimum=0, maximum=None):
+        self.AUTO_TYPE = Capacity(minimum=minimum, maximum=maximum)
+        super(CapacityField, self).__init__(nullable=nullable, default=default)
+
+
+class SortField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, valid_keys, nullable=False, default=None):
+        self.AUTO_TYPE = Sort(valid_keys)
+        super(SortField, self).__init__(nullable=nullable, default=default)
+
+
+class IdentityListField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, min_items=0, unique=True, nullable=False, default=None):
+        if default is None:
+            default = []
+        self.AUTO_TYPE = IdentityList(fields.String(), min_items=min_items,
+                                      unique=unique)
+        super(IdentityListField, self).__init__(nullable=nullable,
+                                                default=default)
+
+
+class AdjustmentTypeField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = AdjustmentType(nullable=nullable)
+        super(AdjustmentTypeField, self).__init__(**kwargs)
+
+
+class ClusterActionNameField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = ClusterActionName(nullable=nullable)
+        super(ClusterActionNameField, self).__init__(**kwargs)
+
+
+class ClusterStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = ClusterStatus
+
+
+class NodeStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = NodeStatus
+
+
+class ActionStatusField(fields.AutoTypedField):
+
+    AUTO_TYPE = ActionStatus
+
+
+class ReceiverTypeField(fields.AutoTypedField):
+
+    AUTO_TYPE = None
+
+    def __init__(self, **kwargs):
+        nullable = kwargs.get('nullable', False)
+        self.AUTO_TYPE = ReceiverType(nullable=nullable)
+        super(ReceiverTypeField, self).__init__(**kwargs)
+
+
+class NodeReplaceMapField(fields.AutoTypedField):
+
+    AUTO_TYPE = AdjustmentType()
