@@ -52,6 +52,31 @@ def _chase_up(start_time, interval):
     return (missed + 1) * interval - elapsed
 
 
+def _wait_for_action(ctx, rpc_client, action_id, timeout):
+    done = False
+    total_sleep = 0
+    ctx = context.get_admin_context()
+    action = objects.Action.get(ctx, action_id, project_safe=False)
+    ctx = context.get_service_context(user=action.user,
+                                      project=action.project)
+    ctx = context.RequestContext.from_dict(ctx)
+    while total_sleep < timeout:
+        action = rpc_client.action_get(ctx, action_id)
+        if action['status'] in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
+            if action['status'] == 'SUCCEEDED':
+                done = True
+            break
+        time.sleep(2)
+        total_sleep += 2
+
+    if done:
+        return True, ""
+    elif total_sleep > timeout:
+        return False, "The operation action timeout"
+    else:
+        return False, "Check action failed"
+
+
 class NotificationEndpoint(object):
 
     VM_FAILURE_EVENTS = {
@@ -86,11 +111,20 @@ class NotificationEndpoint(object):
             }
             node_id = meta.get('cluster_node_id')
             if node_id:
-                LOG.info(_LI("Requesting node recovery: %s"), node_id)
                 ctx_value = context.get_service_context(
                     project=self.project_id, user=payload['user_id'])
                 ctx = context.RequestContext(**ctx_value)
-                self.rpc.node_recover(ctx, node_id, params)
+                node = objects.Node.get(ctx, node_id, project_safe=False)
+                if node:
+                    if node.status != 'RECOVERING':
+                        LOG.info(_LI("Requesting node check: %s"), node_id)
+                        action = self.rpc.node_check(ctx, node_id)
+                        _wait_for_action(ctx, self.rpc, action['action'], 60)
+                    node = objects.Node.get(ctx, node_id, project_safe=False)
+                    health_status = ['ACTIVE', 'PROTECTED', 'RECOVERING']
+                    if node and node.status not in health_status:
+                        LOG.info(_LI("Requesting node recover: %s"), node_id)
+                        self.rpc.node_recover(ctx, node_id, params)
 
     def warn(self, ctxt, publisher_id, event_type, payload, metadata):
         meta = payload.get('metadata', {})
