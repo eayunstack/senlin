@@ -223,7 +223,7 @@ class LoadBalancingPolicy(base.Policy):
         candidates = None
         if deletion is None:
             if action.action == consts.NODE_DELETE:
-                candidates = [action.node.id]
+                candidates = [action.entity.id]
                 count = 1
             elif action.action == consts.CLUSTER_DEL_NODES:
                 # Get candidates from action.input
@@ -318,7 +318,7 @@ class LoadBalancingPolicy(base.Policy):
         # TODO(Yanyanhu): Need special handling for cross-az scenario
         # which is supported by Neutron eayunlbaas.
         if action.action == consts.NODE_CREATE:
-            nodes_added = [action.node.id]
+            nodes_added = [action.entity.id]
         else:
             creation = action.data.get('creation', None)
             nodes_added = creation.get('nodes', []) if creation else []

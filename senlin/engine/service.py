@@ -34,6 +34,7 @@ from senlin.engine import cluster as cluster_mod
 from senlin.engine import cluster_policy as cpm
 from senlin.engine import dispatcher
 from senlin.engine import environment
+from senlin.engine import event as EVENT
 from senlin.engine import health_manager
 from senlin.engine import node as node_mod
 from senlin.engine.receivers import base as receiver_mod
@@ -96,6 +97,7 @@ class EngineService(service.Service):
 
         # Intialize the global environment
         environment.initialize()
+        EVENT.load_dispatcher()
 
     def init_tgm(self):
         self.TG = scheduler.ThreadGroupManager()
@@ -2624,8 +2626,13 @@ class EngineService(service.Service):
                                              limit=limit, marker=marker,
                                              sort=sort,
                                              project_safe=project_safe)
+        results = []
+        for event in all_events:
+            evt = event.as_dict()
+            level = utils.level_from_number(evt['level'])
+            evt['level'] = level
+            results.append(evt)
 
-        results = [event.as_dict() for event in all_events]
         return results
 
     @request_context
@@ -2639,4 +2646,8 @@ class EngineService(service.Service):
                  be found.
         """
         db_event = self.event_find(context, identity)
-        return db_event.as_dict()
+        evt = db_event.as_dict()
+        level = utils.level_from_number(evt['level'])
+        evt['level'] = level
+
+        return evt

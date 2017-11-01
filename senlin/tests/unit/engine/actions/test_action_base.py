@@ -17,6 +17,7 @@ from oslo_config import cfg
 from oslo_utils import timeutils
 import six
 
+from senlin.common import consts
 from senlin.common import exception
 from senlin.common import utils as common_utils
 from senlin.engine.actions import base as ab
@@ -35,6 +36,7 @@ from senlin.tests.unit import fakes
 CLUSTER_ID = 'e1cfd82b-dc95-46ad-86e8-37864d7be1cd'
 OBJID = '571fffb8-f41c-4cbc-945c-cb2937d76f19'
 OWNER_ID = 'c7114713-ee68-409d-ba5d-0560a72a386c'
+ACTION_ID = '4c2cead2-fd74-418a-9d12-bd2d9bd7a812'
 
 
 class DummyAction(ab.Action):
@@ -295,8 +297,7 @@ class ActionBaseTest(base.SenlinTestCase):
         self.assertEqual(0, mock_call.call_count)
 
     @mock.patch.object(ao.Action, 'signal')
-    @mock.patch.object(EVENT, 'error')
-    def test_action_signal_cancel(self, mock_error, mock_call):
+    def test_action_signal_cancel(self, mock_call):
         values = copy.deepcopy(self.action_values)
         action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, **values)
         action.store(self.ctx)
@@ -317,13 +318,10 @@ class ActionBaseTest(base.SenlinTestCase):
             self.assertIsNone(result)
             self.assertEqual(0, mock_call.call_count)
             mock_call.reset_mock()
-            self.assertEqual(1, mock_error.call_count)
-            mock_error.reset_mock()
 
     @mock.patch.object(ao.Action, 'signal')
-    @mock.patch.object(EVENT, 'error')
-    def test_action_signal_suspend(self, mock_error, mock_call):
-        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx)
+    def test_action_signal_suspend(self, mock_call):
+        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, id=ACTION_ID)
 
         expected = [action.RUNNING]
         for status in expected:
@@ -341,13 +339,10 @@ class ActionBaseTest(base.SenlinTestCase):
             self.assertIsNone(result)
             self.assertEqual(0, mock_call.call_count)
             mock_call.reset_mock()
-            self.assertEqual(1, mock_error.call_count)
-            mock_error.reset_mock()
 
     @mock.patch.object(ao.Action, 'signal')
-    @mock.patch.object(EVENT, 'error')
-    def test_action_signal_resume(self, mock_error, mock_call):
-        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx)
+    def test_action_signal_resume(self, mock_call):
+        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, id=ACTION_ID)
 
         expected = [action.SUSPENDED]
         for status in expected:
@@ -365,8 +360,6 @@ class ActionBaseTest(base.SenlinTestCase):
             self.assertIsNone(result)
             self.assertEqual(0, mock_call.call_count)
             mock_call.reset_mock()
-            self.assertEqual(1, mock_error.call_count)
-            mock_error.reset_mock()
 
     def test_execute_default(self):
         action = ab.Action.__new__(DummyAction, OBJID, 'BOOM', self.ctx)
@@ -382,10 +375,11 @@ class ActionBaseTest(base.SenlinTestCase):
     @mock.patch.object(ao.Action, 'abandon')
     def test_set_status(self, mock_abandon, mark_cancel, mark_fail,
                         mark_succeed, mock_event, mock_error, mock_info):
-        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx)
-        action.id = 'FAKE_ID'
+        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, id='FAKE_ID')
+        action.entity = mock.Mock()
 
         action.set_status(action.RES_OK, 'FAKE_REASON')
+
         self.assertEqual(action.SUCCEEDED, action.status)
         self.assertEqual('FAKE_REASON', action.status_reason)
         mark_succeed.assert_called_once_with(action.context, 'FAKE_ID',
@@ -416,6 +410,30 @@ class ActionBaseTest(base.SenlinTestCase):
         self.assertEqual(action.READY, action.status)
         self.assertEqual('BUSY', action.status_reason)
         mock_abandon.assert_called_once_with(action.context, 'FAKE_ID')
+
+    @mock.patch.object(EVENT, 'info')
+    @mock.patch.object(EVENT, 'error')
+    @mock.patch.object(EVENT, 'warning')
+    @mock.patch.object(ao.Action, 'mark_succeeded')
+    @mock.patch.object(ao.Action, 'mark_failed')
+    @mock.patch.object(ao.Action, 'abandon')
+    def test_set_status_reason_is_none(self, mock_abandon, mark_fail,
+                                       mark_succeed, mock_warning, mock_error,
+                                       mock_info):
+        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, id='FAKE_ID')
+        action.entity = mock.Mock()
+
+        action.set_status(action.RES_OK)
+        mock_info.assert_called_once_with(action, consts.PHASE_END,
+                                          'SUCCEEDED')
+
+        action.set_status(action.RES_ERROR)
+        mock_error.assert_called_once_with(action, consts.PHASE_ERROR,
+                                           'ERROR')
+
+        action.set_status(action.RES_RETRY)
+        mock_warning.assert_called_once_with(action, consts.PHASE_ERROR,
+                                             'RETRY')
 
     @mock.patch.object(ao.Action, 'check_status')
     def test_get_status(self, mock_get):
@@ -450,9 +468,9 @@ class ActionBaseTest(base.SenlinTestCase):
 
     @mock.patch.object(EVENT, 'debug')
     def test_check_signal_timeout(self, mock_debug):
-        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx)
-        action.id = 'FAKE_ID'
-        action.timeout = 10
+        action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx, id='FAKE_ID',
+                           timeout=10)
+        action.entity = mock.Mock()
         self.patchobject(action, 'is_timeout', return_value=True)
 
         res = action._check_signal()
@@ -663,7 +681,9 @@ class ActionPolicyCheckTest(base.SenlinTestCase):
         self.assertIsNone(pb.last_op)
         mock_load_all.return_value = [pb]
         mock_load.return_value = policy
+        entity = mock.Mock()
         action = ab.Action(cluster_id, 'OBJECT_ACTION', self.ctx)
+        action.entity = entity
 
         res = action.policy_check(cluster_id, 'BEFORE')
 
@@ -691,7 +711,9 @@ class ActionPolicyCheckTest(base.SenlinTestCase):
         self.assertIsNone(pb.last_op)
         mock_load_all.return_value = [pb]
         mock_load.return_value = policy
+        entity = mock.Mock()
         action = ab.Action(cluster_id, 'OBJECT_ACTION', self.ctx)
+        action.entity = entity
 
         res = action.policy_check(CLUSTER_ID, 'AFTER')
 
@@ -795,38 +817,34 @@ class ActionProcTest(base.SenlinTestCase):
     def test_action_proc_successful(self, mock_mark, mock_load,
                                     mock_event_info):
         action = ab.Action(OBJID, 'OBJECT_ACTION', self.ctx)
-        action.owner = 'WORKER'
-        action.start_time = 123456
+        mock_obj = mock.Mock()
+        action.entity = mock_obj
         self.patchobject(action, 'execute',
                          return_value=(action.RES_OK, 'BIG SUCCESS'))
+        mock_status = self.patchobject(action, 'set_status')
         mock_load.return_value = action
 
-        res = ab.ActionProc(self.ctx, 'ACTION')
-        self.assertTrue(res)
+        res = ab.ActionProc(self.ctx, 'ACTION_ID')
 
-        mock_load.assert_called_once_with(self.ctx, action_id='ACTION')
-        self.assertEqual(action.SUCCEEDED, action.status)
-        self.assertEqual('WORKER', action.owner)
-        self.assertEqual(123456, action.start_time)
-        self.assertEqual('BIG SUCCESS', action.status_reason)
+        self.assertTrue(res)
+        mock_load.assert_called_once_with(self.ctx, action_id='ACTION_ID')
+        mock_event_info.assert_called_once_with(action, 'start')
+        mock_status.assert_called_once_with(action.RES_OK, 'BIG SUCCESS')
 
     @mock.patch.object(EVENT, 'info')
     @mock.patch.object(ab.Action, 'load')
     @mock.patch.object(ao.Action, 'mark_failed')
-    def test_action_proc_failed_error(self, mock_mark, mock_load,
-                                      mock_event_info):
-        action = ab.Action(OBJID, 'CLUSTER_ACTION', self.ctx)
-        action.id = '5eb0c9a5-149a-4cd7-875f-0351c3cc69d5'
-        action.owner = OWNER_ID
-        action.start_time = 123456
-        action.cluster = mock.Mock(id=CLUSTER_ID)
-        action.cluster.name = 'fake-cluster'
+    def test_action_proc_failed_error(self, mock_mark, mock_load, mock_info):
+        action = ab.Action(OBJID, 'CLUSTER_ACTION', self.ctx, id=ACTION_ID)
+        action.entity = mock.Mock(id=CLUSTER_ID, name='fake-cluster')
+
         self.patchobject(action, 'execute', side_effect=Exception('Boom!'))
+        mock_status = self.patchobject(action, 'set_status')
         mock_load.return_value = action
 
         res = ab.ActionProc(self.ctx, 'ACTION')
-        self.assertFalse(res)
 
+        self.assertFalse(res)
         mock_load.assert_called_once_with(self.ctx, action_id='ACTION')
-        self.assertEqual(action.FAILED, action.status)
-        self.assertEqual('Boom!', action.status_reason)
+        mock_info.assert_called_once_with(action, 'start')
+        mock_status.assert_called_once_with(action.RES_ERROR, 'Boom!')
