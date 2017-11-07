@@ -32,3 +32,13 @@ class CinderClient(base.DriverBase):
         res = self.conn.block_store.delete_volume(
             volume_id, ignore_missing=ignore_missing)
         return res
+
+    @sdk.translate_exception
+    def volumes(self, details=True, **attr):
+        res = self.conn.block_store.volumes(details=details, **attr)
+        return res
+
+    @sdk.translate_exception
+    def get_volume(self, volume):
+        res = self.conn.block_store.get_volume(volume)
+        return res
