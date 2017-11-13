@@ -34,6 +34,7 @@ class HealthPolicy(base.Policy):
         ('BEFORE', consts.CLUSTER_RESIZE),
         ('BEFORE', consts.CLUSTER_SCALE_IN),
         ('BEFORE', consts.NODE_DELETE),
+        ('BEFORE', consts.NODE_RECOVER),
         ('AFTER', consts.CLUSTER_DEL_NODES),
         ('AFTER', consts.CLUSTER_SCALE_IN),
         ('AFTER', consts.CLUSTER_RESIZE),
