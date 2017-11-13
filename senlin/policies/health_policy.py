@@ -178,7 +178,7 @@ class HealthPolicy(base.Policy):
         kwargs = {
             'check_type': self.check_type,
             'interval': self.interval,
-            'params': {},
+            'params': {'recover_action': self.recover_actions},
         }
 
         health_manager.register(cluster.id, engine_id=None, **kwargs)
