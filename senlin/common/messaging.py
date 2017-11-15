@@ -15,12 +15,20 @@ from oslo_config import cfg
 import oslo_messaging as messaging
 
 from senlin.common import context
+from senlin.common.i18n import _
 
 # An alias for the default serializer
 JsonPayloadSerializer = messaging.JsonPayloadSerializer
 
 TRANSPORT = None
 NOTIFIER = None
+
+# DEFAULT, notification_topic
+notification_topic_opts = [
+    cfg.ListOpt('notification_topics',
+                default=[],
+                help=_('Default notification topic.'))]
+cfg.CONF.register_opts(notification_topic_opts)
 
 
 class RequestContextSerializer(messaging.Serializer):
@@ -71,7 +79,7 @@ def setup(url=None, optional=False):
     if not NOTIFIER and TRANSPORT:
         serializer = RequestContextSerializer(JsonPayloadSerializer())
         NOTIFIER = messaging.Notifier(TRANSPORT, serializer=serializer,
-                                      topics=['notifications'])
+                                      topics=cfg.CONF.notification_topics)
 
 
 def cleanup():
