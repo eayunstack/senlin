@@ -267,7 +267,6 @@ class HealthManager(service.Service):
 
         listener = entry.get('listener', None)
         if listener:
-            self.TG.thread_done(listener)
             listener.stop()
             return
 
