@@ -117,6 +117,7 @@ def ListenerProc(exchange, project_id, cluster_id):
         pool="senlin-listeners")
 
     listener.start()
+    return listener
 
 
 class HealthManager(service.Service):
@@ -220,7 +221,7 @@ class HealthManager(service.Service):
             return
 
         project = cluster.project
-        return self.TG.add_thread(ListenerProc, 'nova', project, cluster_id)
+        return ListenerProc('nova', project, cluster_id)
 
     def _start_check(self, entry):
         """Routine for starting the checking for a cluster.
@@ -267,6 +268,7 @@ class HealthManager(service.Service):
         listener = entry.get('listener', None)
         if listener:
             listener.stop()
+            listener.wait()
             return
 
     def _load_runtime_registry(self):
@@ -301,6 +303,12 @@ class HealthManager(service.Service):
 
     def stop(self):
         self.TG.stop_timers()
+
+        # stop all has exist listener
+        for lst in self.rt.get('registries'):
+            if 'listener' in lst:
+                lst['listener'].stop()
+                lst['listener'].wait()
         super(HealthManager, self).stop()
 
     @property
