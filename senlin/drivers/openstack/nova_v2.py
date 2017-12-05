@@ -12,7 +12,9 @@
 
 from oslo_config import cfg
 from oslo_log import log
+from openstack import connection
 from openstack import exceptions
+from openstack import profile
 
 from senlin.common.i18n import _LW
 from senlin.drivers import base
@@ -324,4 +326,18 @@ class NovaClient(base.DriverBase):
 
     @sdk.translate_exception
     def server_state_reset(self, server, state=None):
-        return self.conn.compute.reset_server_state(server, state)
+        auth_url = cfg.CONF.authentication.auth_url
+        region = cfg.CONF.default_region_name
+        project_name = cfg.CONF.authentication.service_project_name
+        user_domain_name = cfg.CONF.authentication.service_user_domain
+        project_domain_name = cfg.CONF.authentication.service_project_domain
+        username = cfg.CONF.authentication.service_username
+        password = cfg.CONF.authentication.service_password
+        prof = profile.Profile()
+        prof.set_region(profile.Profile.ALL, region)
+        conn = connection.Connection(profile=prof, auth_url=auth_url,
+                                     project_name=project_name,
+                                     username=username, password=password,
+                                     user_domain_name=user_domain_name,
+                                     project_domain_name=project_domain_name)
+        return conn.compute.reset_server_state(server, state)
