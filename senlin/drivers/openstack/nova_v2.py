@@ -129,10 +129,8 @@ class NovaClient(base.DriverBase):
                             % (server)))
 
     @sdk.translate_exception
-    def server_rebuild(self, server, image, name=None, admin_password=None,
-                       **attrs):
-        return self.conn.compute.rebuild_server(server, name, admin_password,
-                                                image=image, **attrs)
+    def server_rebuild(self, server, image):
+        return self.conn.compute.rebuild_server(server, image)
 
     @sdk.translate_exception
     def server_resize(self, server, flavor):

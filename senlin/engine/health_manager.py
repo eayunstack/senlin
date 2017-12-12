@@ -87,7 +87,7 @@ class NotificationEndpoint(object):
         'compute.instance.soft_delete.end': 'SOFT_DELETE',
     }
 
-    def __init__(self, project_id, cluster_id):
+    def __init__(self, project_id, cluster_id, recover_action):
         self.filter_rule = messaging.NotificationFilter(
             publisher_id='^compute.*',
             event_type='^compute\.instance\..*',
@@ -95,6 +95,7 @@ class NotificationEndpoint(object):
         self.project_id = project_id
         self.cluster_id = cluster_id
         self.rpc = rpc_client.EngineClient()
+        self.recover_action = recover_action
 
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         meta = payload['metadata']
@@ -107,6 +108,7 @@ class NotificationEndpoint(object):
                 'instance_id': payload.get('instance_id', 'Unknown'),
                 'timestamp': metadata['timestamp'],
                 'publisher': publisher_id,
+                'operation': self.recover_action['operation'],
             }
             node_id = meta.get('cluster_node_id')
             if node_id:
@@ -138,13 +140,13 @@ class NotificationEndpoint(object):
             LOG.debug("event_type=%s" % event_type)
 
 
-def ListenerProc(exchange, project_id, cluster_id):
+def ListenerProc(exchange, project_id, cluster_id, recover_action):
     transport = messaging.get_notification_transport(cfg.CONF)
     targets = [
         messaging.Target(topic='versioned_notifications', exchange=exchange),
     ]
     endpoints = [
-        NotificationEndpoint(project_id, cluster_id),
+        NotificationEndpoint(project_id, cluster_id, recover_action),
     ]
     listener = messaging.get_notification_listener(
         transport, targets, endpoints, executor='threading',
@@ -200,11 +202,12 @@ class HealthManager(service.Service):
         else:
             return False, "Cluster check action failed"
 
-    def _poll_cluster(self, cluster_id, timeout):
+    def _poll_cluster(self, cluster_id, timeout, recover_action):
         """Routine to be executed for polling cluster status.
 
         :param cluster_id: The UUID of the cluster to be checked.
         :param timeout: The maximum number of seconds to wait.
+        :param recover_action: The health policy action name.
         :returns: Nothing.
         """
         start_time = timeutils.utcnow(True)
@@ -239,14 +242,15 @@ class HealthManager(service.Service):
                 ctx = context.get_service_context(user=node.user,
                                                   project=node.project)
                 ctx = context.RequestContext.from_dict(ctx)
-                self.rpc_client.node_recover(ctx, node.id)
+                self.rpc_client.node_recover(ctx, node.id, recover_action)
 
         return _chase_up(start_time, timeout)
 
-    def _add_listener(self, cluster_id):
+    def _add_listener(self, cluster_id, recover_action):
         """Routine to be executed for adding cluster listener.
 
         :param cluster_id: The UUID of the cluster to be filtered.
+        :param recover_action: The health policy action name.
         :returns: Nothing.
         """
         cluster = objects.Cluster.get(self.ctx, cluster_id)
@@ -255,7 +259,8 @@ class HealthManager(service.Service):
             return
 
         project = cluster.project
-        return ListenerProc('nova', project, cluster_id)
+        return ListenerProc('nova', project, cluster_id,
+                            recover_action)
 
     def _start_check(self, entry):
         """Routine for starting the checking for a cluster.
@@ -265,16 +270,24 @@ class HealthManager(service.Service):
         """
         cid = entry['cluster_id']
         ctype = entry['check_type']
+        # Get the recover action parameter from the entry params
+        params = entry['params']
+        recover_action = {}
+        if 'recover_action' in params:
+            rac = params['recover_action']
+            for operation in rac:
+                recover_action['operation'] = operation.get('name')
+
         if ctype == consts.NODE_STATUS_POLLING:
             interval = min(entry['interval'], cfg.CONF.check_interval_max)
             timer = self.TG.add_dynamic_timer(self._poll_cluster,
                                               None,  # initial_delay
                                               None,  # check_interval_max
-                                              cid, interval)
+                                              cid, interval, recover_action)
             entry['timer'] = timer
         elif ctype == consts.VM_LIFECYCLE_EVENTS:
             LOG.info("Start listening events for cluster (%s).", cid)
-            listener = self._add_listener(cid)
+            listener = self._add_listener(cid, recover_action)
             if listener:
                 entry['listener'] = listener
             else:

@@ -1082,34 +1082,31 @@ class ServerProfile(base.Profile):
             raise exc.EResourceDeletion(type='server', id=obj.physical_id,
                                         message=six.text_type(ex))
 
-    def do_rebuild(self, obj):
-        if not obj.physical_id:
-            return False
+    def do_rebuild(self, obj, server):
+        nova_driver = self.compute(obj)
+        cinder_driver = self.cinder(obj)
 
-        self.server_id = obj.physical_id
-        driver = self.compute(obj)
+        if server.image_id:
+            image_id = server.image_id
+        elif server.attached_volumes:
+            for volume_ids in server.attached_volumes:
+                try:
+                    vs = cinder_driver.get_volume(volume_ids['id'])
+                    if vs.is_bootable:
+                        image_id = vs.volume_image_metadata['image_id']
+                except exc.InternalError as ex:
+                    raise exc.EResourceOperation(op='rebuild', type='server',
+                                                 id=obj.physical_id,
+                                                 message=six.text_type(ex))
+
         try:
-            server = driver.server_get(self.server_id)
+            nova_driver.server_rebuild(server.id, image_id)
+            nova_driver.wait_for_server(server.id)
+            return server.id
         except exc.InternalError as ex:
             raise exc.EResourceOperation(op='rebuilding', type='server',
                                          id=self.server_id,
                                          message=six.text_type(ex))
-
-        if server is None or server.image is None:
-            return False
-
-        image_id = server.image['id']
-        admin_pass = self.properties.get(self.ADMIN_PASS)
-        try:
-            driver.server_rebuild(self.server_id, image_id,
-                                  self.properties.get(self.NAME),
-                                  admin_pass)
-            driver.wait_for_server(self.server_id, 'ACTIVE')
-        except exc.InternalError as ex:
-            raise exc.EResourceOperation(op='rebuilding', type='server',
-                                         id=self.server_id,
-                                         message=six.text_type(ex))
-        return True
 
     def do_check(self, obj):
         if not obj.physical_id:
@@ -1137,8 +1134,16 @@ class ServerProfile(base.Profile):
         # TODO(Qiming): Handle the case that the operation contains other
         #               alternative recover operation
         # Depends-On: https://review.openstack.org/#/c/359676/
-        if operation == 'REBUILD':
-            return self.do_rebuild(obj)
+        if not obj.physical_id:
+            return False
+        try:
+            server = self.compute(obj).server_get(obj.physical_id)
+        except exc.InternalError as ex:
+            raise exc.EResourceOperation(op='recovering', type='server',
+                                         id=obj.physical_id,
+                                         message=six.text_type(ex))
+        if operation == 'REBUILD' and server.id:
+            return self.do_rebuild(obj, server)
 
         return super(ServerProfile, self).do_recover(obj, **options)
 

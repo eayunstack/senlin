@@ -271,7 +271,23 @@ class NodeAction(base.Action):
 
         :returns: A tuple containing the result and the corresponding reason.
         """
-        res = self.entity.do_recover(self.context, **self.inputs)
+        inputs = {}
+        if self.inputs.get('operation'):
+            inputs = self.inputs
+        else:
+            # process data from health_policy
+            pd = self.data.get('health', None)
+            if pd:
+                recover_action = pd.get('recover_action', None)
+                fencing = pd.get('fencing', None)
+                if recover_action is not None:
+                    # TODO(Qiming): Implement the support to action sequences
+                    inputs['operation'] = recover_action[0]['name']
+                    inputs['params'] = recover_action[0]['params']
+                if fencing and 'COMPUTE' in fencing:
+                    inputs['force'] = True
+
+        res = self.entity.do_recover(self.context, **inputs)
         if res:
             return self.RES_OK, _('Node recovered successfully.')
         else:

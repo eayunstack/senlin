@@ -34,6 +34,7 @@ class HealthPolicy(base.Policy):
         ('BEFORE', consts.CLUSTER_RESIZE),
         ('BEFORE', consts.CLUSTER_SCALE_IN),
         ('BEFORE', consts.NODE_DELETE),
+        ('BEFORE', consts.NODE_RECOVER),
         ('AFTER', consts.CLUSTER_DEL_NODES),
         ('AFTER', consts.CLUSTER_SCALE_IN),
         ('AFTER', consts.CLUSTER_RESIZE),
@@ -90,6 +91,12 @@ class HealthPolicy(base.Policy):
         # 'STORAGE', 'NETWORK'
     )
 
+    ACTION_KEYS = (
+        ACTION_NAME, ACTION_PARAMS,
+    ) = (
+        'name', 'params',
+    )
+
     properties_schema = {
         DETECTION: schema.Map(
             _('Policy aspect for node failure detection.'),
@@ -119,12 +126,22 @@ class HealthPolicy(base.Policy):
             schema={
                 RECOVERY_ACTIONS: schema.List(
                     _('List of actions to try for node recovery.'),
-                    schema=schema.String(
+                    schema=schema.Map(
                         _('Action to try for node recovery.'),
-                        constraints=[
-                            constraints.AllowedValues(RECOVERY_ACTION_VALUES),
-                        ]
-                    ),
+                        schema={
+                            ACTION_NAME: schema.String(
+                                _("Name of action to execute."),
+                                constraints=[
+                                    constraints.AllowedValues(
+                                        RECOVERY_ACTION_VALUES),
+                                ],
+                                required=True
+                            ),
+                            ACTION_PARAMS: schema.Map(
+                                _("Parameters for the action")
+                            ),
+                        }
+                    )
                 ),
                 RECOVERY_FENCING: schema.List(
                     _('List of services to be fenced.'),
@@ -133,6 +150,7 @@ class HealthPolicy(base.Policy):
                         constraints=[
                             constraints.AllowedValues(FENCING_OPTION_VALUES),
                         ],
+                        required=True,
                     ),
                 ),
             }
@@ -160,7 +178,7 @@ class HealthPolicy(base.Policy):
         kwargs = {
             'check_type': self.check_type,
             'interval': self.interval,
-            'params': {},
+            'params': {'recover_action': self.recover_actions},
         }
 
         health_manager.register(cluster.id, engine_id=None, **kwargs)
