@@ -1134,16 +1134,15 @@ class ServerProfile(base.Profile):
         # TODO(Qiming): Handle the case that the operation contains other
         #               alternative recover operation
         # Depends-On: https://review.openstack.org/#/c/359676/
-        if not obj.physical_id:
-            return False
-        try:
-            server = self.compute(obj).server_get(obj.physical_id)
-        except exc.InternalError as ex:
-            raise exc.EResourceOperation(op='recovering', type='server',
-                                         id=obj.physical_id,
-                                         message=six.text_type(ex))
-        if operation == 'REBUILD' and server.id:
-            return self.do_rebuild(obj, server)
+        if obj.physical_id:
+            try:
+                server = self.compute(obj).server_get(obj.physical_id)
+            except exc.InternalError as ex:
+                raise exc.EResourceOperation(op='recovering', type='server',
+                                             id=obj.physical_id,
+                                             message=six.text_type(ex))
+            if operation == 'REBUILD' and server.id:
+                return self.do_rebuild(obj, server)
 
         return super(ServerProfile, self).do_recover(obj, **options)
 
