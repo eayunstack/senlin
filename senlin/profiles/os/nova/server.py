@@ -1144,6 +1144,9 @@ class ServerProfile(base.Profile):
             if operation == 'REBUILD' and server.id:
                 return self.do_rebuild(obj, server)
 
+        # When recover operation value 'REBUILD' the vm uuid not exist,
+        # Chanage operation value 'REBUILD' to 'RECREATE'.
+        options['operation'] = 'RECREATE'
         return super(ServerProfile, self).do_recover(obj, **options)
 
     def handle_reboot(self, obj, **options):
